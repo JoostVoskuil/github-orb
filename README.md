@@ -1,6 +1,10 @@
 # GitHub Orb
 
+## YouTube Orb Demo
+
 [![Watch GitHub Orb on YouTube](https://img.youtube.com/vi/QgYR_15GOpI/hqdefault.jpg)](https://www.youtube.com/watch?v=QgYR_15GOpI)
+
+## Screenshots
 
 ![GitHub Orb displaying Copilot activity](media/readme/fysicalorb.png)
 ![GitHub Orb dashboard showing the Live Dashboard tab](media/readme/dashboard.png)
