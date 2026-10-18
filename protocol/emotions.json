@@ -1,0 +1,113 @@
+{
+  "transitionMs": 900,
+  "palette": {
+    "background": "#0d1117",
+    "head": "#1b1530",
+    "headStroke": "#e6e1f5",
+    "lens": "#2a1f4a",
+    "eye": "#ffffff",
+    "sourceVscode": "#a371f7",
+    "sourceCli": "#2dd4bf",
+    "sourceSim": "#8b949e"
+  },
+  "moods": {
+    "idle": {
+      "ring": { "color": "#6e40c9", "anim": "chase", "speed": 0.1, "width": 8 },
+      "eyes": { "shape": "closed", "w": 34, "h": 8, "wander": 0, "blinkEverySec": 0 },
+      "head": { "bob": 0.8, "shake": 0, "tilt": 0 },
+      "mouth": "none",
+      "fx": "zzz",
+      "brightness": 0.6,
+      "sound": null
+    },
+    "thinking": {
+      "ring": { "color": "#2f81f7", "anim": "chase", "speed": 0.12, "width": 8 },
+      "eyes": { "shape": "pill", "w": 22, "h": 46, "wander": 4, "blinkEverySec": 6 },
+      "head": { "bob": 0.5, "shake": 0, "tilt": 0 },
+      "mouth": "none",
+      "fx": "dots",
+      "brightness": 1,
+      "sound": null
+    },
+    "tool": {
+      "ring": { "color": "#2f81f7", "anim": "chase", "speed": 0.18, "width": 8 },
+      "eyes": { "shape": "pill", "w": 22, "h": 38, "wander": 2, "blinkEverySec": 6 },
+      "head": { "bob": 0.3, "shake": 0, "tilt": -1 },
+      "mouth": "flat",
+      "fx": "none",
+      "brightness": 1,
+      "sound": null
+    },
+    "needsInput": {
+      "ring": { "color": "#f0c020", "anim": "chase", "speed": 0.2, "width": 9 },
+      "eyes": { "shape": "wide", "w": 32, "h": 54, "wander": 0, "blinkEverySec": 3 },
+      "head": { "bob": 0, "shake": 0, "tilt": 2, "wobble": 0 },
+      "mouth": "o",
+      "fx": "question",
+      "brightness": 1,
+      "sound": { "repeatSec": 30, "wave": "sine", "notes": [[740, 105], [0, 70], [988, 120]] }
+    },
+    "done": {
+      "ring": { "color": "#3fb950", "anim": "solid", "speed": 0, "width": 12 },
+      "eyes": { "shape": "happy", "w": 34, "h": 20, "wander": 0, "blinkEverySec": 0 },
+      "head": { "bob": 0.5, "shake": 0, "tilt": 0, "hop": false },
+      "mouth": "smile",
+      "fx": "none",
+      "brightness": 1,
+      "sound": { "repeatSec": 0, "wave": "triangle", "notes": [[659, 80], [784, 85], [988, 115]] }
+    },
+    "error": {
+      "ring": { "color": "#f85149", "anim": "solid", "speed": 0, "width": 12 },
+      "eyes": { "shape": "x", "w": 30, "h": 30, "wander": 0, "blinkEverySec": 0 },
+      "head": { "bob": 0, "shake": 1, "tilt": 0 },
+      "mouth": "wavy",
+      "fx": "none",
+      "brightness": 1,
+      "sound": null
+    },
+    "disconnected": {
+      "ring": { "color": "#484f58", "anim": "solid", "speed": 0, "width": 6 },
+      "eyes": { "shape": "pill", "w": 18, "h": 18, "wander": 0, "blinkEverySec": 0 },
+      "head": { "bob": 0, "shake": 0, "tilt": 0 },
+      "mouth": "flat",
+      "fx": "wifi",
+      "brightness": 0.4,
+      "grayscale": true,
+      "sound": null
+    }
+  },
+  "alertSounds": {
+    "prAssigned": { "repeatSec": 0, "wave": "triangle", "notes": [[784, 80], [988, 125]] },
+    "reviewRequested": { "repeatSec": 0, "wave": "sine", "notes": [[988, 125], [784, 80]] },
+    "workflowFailure": { "repeatSec": 0, "wave": "square", "notes": [[440, 85], [0, 45], [440, 85], [0, 45], [330, 140]] },
+    "workflowUpdate": { "repeatSec": 0, "wave": "square", "notes": [[440, 85], [0, 45], [440, 85], [0, 45], [330, 140]] },
+    "securityAlert": { "repeatSec": 0, "wave": "square", "notes": [[880, 55], [0, 40], [880, 55], [0, 40], [880, 55], [0, 40], [880, 55]] },
+    "criticalSecurity": { "repeatSec": 0, "wave": "square", "notes": [[880, 55], [0, 40], [880, 55], [0, 40], [880, 55], [0, 40], [880, 55]] },
+    "githubNotification": { "repeatSec": 0, "wave": "sine", "notes": [[740, 110]] }
+  },
+  "presentations": {
+    "copilot": {
+      "idle": { "animation": "idle", "task": "Resting", "ring": { "mode": "animated", "anim": "chase", "color": "#6e40c9", "speed": 0.1, "width": 8 } },
+      "thinking": { "animation": "thinking", "task": "Working", "ring": { "mode": "animated", "anim": "chase", "color": "#2f81f7", "speed": 0.12, "width": 8 } },
+      "tool": { "animation": "tool", "task": "Executing", "ring": { "mode": "animated", "anim": "chase", "color": "#2f81f7", "speed": 0.18, "width": 8 } },
+      "needsInput": { "animation": "needsInput", "task": "Input needed", "ring": { "mode": "animated", "anim": "chase", "color": "#f0c020", "speed": 0.2, "width": 9 } },
+      "done": { "animation": "done", "task": "Done", "ring": { "mode": "solid", "anim": "solid", "color": "#3fb950", "speed": 0, "width": 12 } },
+      "error": { "animation": "error", "task": "Error", "ring": { "mode": "solid", "anim": "solid", "color": "#f85149", "speed": 0, "width": 12 } },
+      "disconnected": { "animation": "idle", "task": "Offline", "ring": { "mode": "solid", "anim": "solid", "color": "#484f58", "speed": 0, "width": 6 } }
+    },
+    "mona": {
+      "idle": { "animation": "mona-idle", "task": "Resting", "ring": { "mode": "animated", "anim": "chase", "color": "#6e40c9", "speed": 0.1, "width": 8 } },
+      "thinking": { "animation": "mona-thinking", "task": "Working", "ring": { "mode": "animated", "anim": "chase", "color": "#2f81f7", "speed": 0.12, "width": 8 } },
+      "tool": { "animation": "mona-tool", "task": "Executing", "ring": { "mode": "animated", "anim": "chase", "color": "#2f81f7", "speed": 0.18, "width": 8 } },
+      "needsInput": { "animation": "mona-pr", "task": "Input needed", "ring": { "mode": "animated", "anim": "chase", "color": "#f0a020", "speed": 0.2, "width": 9 } },
+      "done": { "animation": "mona-done", "task": "Done", "ring": { "mode": "solid", "anim": "solid", "color": "#3fb950", "speed": 0, "width": 12 } },
+      "error": { "animation": "mona-workflow", "task": "Error", "ring": { "mode": "solid", "anim": "solid", "color": "#f85149", "speed": 0, "width": 12 } },
+      "scared": { "animation": "mona-security", "task": "Scared", "ring": { "mode": "solid", "anim": "solid", "color": "#f85149", "speed": 0, "width": 12 } },
+      "disconnected": { "animation": "mona-offline", "task": "Offline", "ring": { "mode": "solid", "anim": "solid", "color": "#484f58", "speed": 0, "width": 6 } },
+      "prAssigned": { "animation": "mona-pr", "task": "PR assigned", "ring": { "mode": "animated", "anim": "chase", "color": "#f0a020", "speed": 0.2, "width": 9 } },
+      "reviewRequested": { "animation": "mona-pr", "task": "PR needs review", "ring": { "mode": "animated", "anim": "chase", "color": "#f0a020", "speed": 0.2, "width": 9 } },
+      "workflowFailure": { "animation": "mona-workflow", "task": "Workflow failed", "ring": { "mode": "solid", "anim": "solid", "color": "#f85149", "speed": 0, "width": 12 } },
+      "securityAlert": { "animation": "mona-security", "task": "Security alert", "ring": { "mode": "solid", "anim": "solid", "color": "#f85149", "speed": 0, "width": 12 } }
+    }
+  }
+}

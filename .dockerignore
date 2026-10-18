@@ -1,0 +1,13 @@
+.git
+node_modules
+dist
+**/.DS_Store
+.env
+.env.*
+!.env.example
+observer/config.json
+firmware/.pio
+firmware/.platformio
+dashboard-data
+media/copilot
+media/mona

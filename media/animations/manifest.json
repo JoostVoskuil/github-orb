@@ -1,0 +1,225 @@
+{
+  "version": 1,
+  "frameSize": 320,
+  "fps": 12,
+  "columns": 8,
+  "clips": {
+    "idle": {
+      "duration": 8,
+      "loop": true,
+      "fps": 12,
+      "frames": 96,
+      "columns": 8,
+      "file": "idle.webp",
+      "sha256": "d91a18cc34025be0fa4e951cc721321e711ebe36f1390f34754e91194faec5c3"
+    },
+    "thinking": {
+      "duration": 8,
+      "loop": true,
+      "fps": 12,
+      "frames": 96,
+      "columns": 8,
+      "file": "thinking.webp",
+      "sha256": "e8940537f4363df4483d68820be07ab9ad2eb61da040c97205652deb23d997bc"
+    },
+    "tool": {
+      "duration": 8,
+      "loop": true,
+      "fps": 12,
+      "frames": 96,
+      "columns": 8,
+      "file": "tool.webp",
+      "sha256": "2d9c68667069a9a849a6ac4c6fb253ab0625a02338bd866d822eefa615af8a3f"
+    },
+    "needsInput": {
+      "duration": 8,
+      "loop": true,
+      "fps": 12,
+      "frames": 96,
+      "columns": 8,
+      "file": "needsInput.webp",
+      "sha256": "d9fd00cc8816c6d1207d49dbe8df45c48fe45690f156c474374b54e91d1c2785"
+    },
+    "done": {
+      "duration": 3,
+      "loop": false,
+      "fps": 12,
+      "frames": 36,
+      "columns": 8,
+      "file": "done.webp",
+      "sha256": "0bc9492d64d07e46c8d58383d3729997f93f4abce735400a64250b6c6d011277"
+    },
+    "error": {
+      "duration": 3,
+      "loop": false,
+      "fps": 12,
+      "frames": 36,
+      "columns": 8,
+      "file": "error.webp",
+      "sha256": "4d3cc411f5a0040aacb95b40b5b3096c321334ad1de82e3caba30fb2b05eff3d"
+    },
+    "disconnected": {
+      "duration": 8,
+      "loop": true,
+      "fps": 12,
+      "frames": 96,
+      "columns": 8,
+      "file": "disconnected.webp",
+      "sha256": "4bf9eb4bfd4ed0bf426327638cddaf077b1200253471afc46ca6070d171308be"
+    },
+    "mona-pr": {
+      "duration": 8,
+      "loop": true,
+      "mascot": "mona",
+      "kind": "pr",
+      "mood": "needsInput",
+      "fps": 12,
+      "frames": 96,
+      "columns": 8,
+      "file": "mona-pr.webp",
+      "sha256": "8b7f7d8c3045a3bfc438314c8998ea0b3868c782e457d7ed2ad9b61276942d0c"
+    },
+    "mona-workflow": {
+      "duration": 3,
+      "loop": false,
+      "mascot": "mona",
+      "kind": "workflow",
+      "mood": "error",
+      "fps": 12,
+      "frames": 36,
+      "columns": 8,
+      "file": "mona-workflow.webp",
+      "sha256": "8995761f90dcf20724ec6e281336c4f62df7e273a1ca53b6c495c70e93e7a060"
+    },
+    "mona-security": {
+      "duration": 3,
+      "loop": false,
+      "mascot": "mona",
+      "kind": "security",
+      "mood": "error",
+      "fps": 12,
+      "frames": 36,
+      "columns": 8,
+      "file": "mona-security.webp",
+      "sha256": "b60718b6bcf0d6c6e1166ac9bfa565a3e773b69b4b9cd099e6d9807ea5c7a2bc"
+    },
+    "mona-idle": {
+      "duration": 8,
+      "loop": true,
+      "mascot": "mona",
+      "kind": "idle",
+      "mood": "idle",
+      "fps": 12,
+      "frames": 96,
+      "columns": 8,
+      "file": "mona-idle.webp",
+      "sha256": "edbb4d94716924b50ed89db616b7e96ffbc607062475d25a1fb71562525afa27"
+    },
+    "mona-thinking": {
+      "duration": 8,
+      "loop": true,
+      "mascot": "mona",
+      "kind": "thinking",
+      "mood": "thinking",
+      "fps": 12,
+      "frames": 96,
+      "columns": 8,
+      "file": "mona-thinking.webp",
+      "sha256": "b206fd5e3edc8f048ee474b41a1adb90d3a0a14def506ac9982364388a50fad8"
+    },
+    "mona-tool": {
+      "duration": 8,
+      "loop": true,
+      "mascot": "mona",
+      "kind": "tool",
+      "mood": "tool",
+      "fps": 12,
+      "frames": 96,
+      "columns": 8,
+      "file": "mona-tool.webp",
+      "sha256": "c2be0f53b9c3cef9cb08c36547ca183192829d43f01f5ca9abfd826cba144088"
+    },
+    "mona-done": {
+      "duration": 3,
+      "loop": false,
+      "mascot": "mona",
+      "kind": "done",
+      "mood": "done",
+      "fps": 12,
+      "frames": 36,
+      "columns": 8,
+      "file": "mona-done.webp",
+      "sha256": "9fc2a709b94b3021616b352f858b37ce51ba6e158943dfe6f72f74a60eff7093"
+    },
+    "mona-offline": {
+      "duration": 8,
+      "loop": true,
+      "mascot": "mona",
+      "kind": "offline",
+      "mood": "disconnected",
+      "fps": 12,
+      "frames": 96,
+      "columns": 8,
+      "file": "mona-offline.webp",
+      "sha256": "916faaf3fa7e783a40dc9ce1c242018a19745dbd1dd9ae34208584aa5fb44da5"
+    }
+  },
+  "source": {
+    "repository": "https://github.com/martinwoodward/octoprints",
+    "revision": "981a85f0bec9d1a9c280fd5719d0d797852229c4",
+    "path": "models/copilot/copilot_multicolor.3mf",
+    "license": "CC-BY-NC-4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
+    "attribution": "Copilot model from octoprints by Martin Woodward and contributors. GitHub mascot.",
+    "changes": "Mesh extracted from 3MF; custom display materials, lighting and procedural animation."
+  },
+  "render": {
+    "reference": "/media/images/copilot-looking-frontal.png",
+    "samples": {
+      "shellHighlight": "#af8fff",
+      "rimHighlight": "#aaddff",
+      "rimBlue": "#3b4dff",
+      "lens": "#3b2698",
+      "face": "#010b5f",
+      "eyeHighlight": "#93fbfd",
+      "eye": "#4ce2eb"
+    },
+    "palette": {
+      "shell": "#9050f0",
+      "trim": "#3b4dff",
+      "lensBase": "#170b42",
+      "faceEdge": "#03062c"
+    },
+    "frameSize": 320,
+    "supersampling": 2,
+    "webpQuality": 0.98
+  },
+  "characters": {
+    "mona": {
+      "source": {
+        "repository": "https://github.com/martinwoodward/octoprints",
+        "revision": "981a85f0bec9d1a9c280fd5719d0d797852229c4",
+        "path": "models/mona/mona_multicolor.3mf",
+        "sourceBytes": 284639,
+        "sha256": "aed080c6f51471fd8b76c625f49c9168fc33d158d2febf44ddb151be84a13178",
+        "license": "CC-BY-NC-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
+        "attribution": "Mona model from octoprints by Martin Woodward and contributors. GitHub mascot.",
+        "changes": "Mesh extracted from 3MF; intrinsic orientation retained rather than print-bed placement; 7 split-painted micro-faces collapsed to modal decoded filament (ties use lowest index); smooth display normals, source filament colors, lighting, calm news poses, transparent frame rendering, JPEG conversion and alpha-mask compression.",
+        "rights": "Noncommercial use only under CC BY-NC 4.0; commercial distribution requires separate permission. No GitHub affiliation or trademark permission is implied.",
+        "mesh": {
+          "vertices": 7498,
+          "triangles": 15000,
+          "splitPaintTriangles": 7
+        }
+      },
+      "render": {
+        "frameSize": 320,
+        "supersampling": 2,
+        "webpQuality": 0.98,
+        "orientation": "Z-up to Y-up, front negative Y to positive Z",
+        "palette": "Source Bambu filament colors"
+      }
+    }
+  }
+}

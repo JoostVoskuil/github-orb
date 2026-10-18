@@ -1,0 +1,12 @@
+node_modules/
+dist/
+firmware/.pio/
+firmware/.platformio/
+observer/config.json
+.github/extensions/github-orb/
+.env
+.env.*
+!.env.example
+dashboard-data/
+.DS_Store
+npm-debug.log*

@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/martinwoodward/octoprints",
+  "revision": "981a85f0bec9d1a9c280fd5719d0d797852229c4",
+  "path": "models/copilot/copilot_multicolor.3mf",
+  "license": "CC-BY-NC-4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
+  "attribution": "Copilot model from octoprints by Martin Woodward and contributors. GitHub mascot.",
+  "changes": "Mesh extracted from 3MF; custom display materials, lighting and procedural animation."
+}

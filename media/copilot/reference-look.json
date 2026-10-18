@@ -1,0 +1,21 @@
+{
+  "reference": "/media/images/copilot-looking-frontal.png",
+  "samples": {
+    "shellHighlight": "#af8fff",
+    "rimHighlight": "#aaddff",
+    "rimBlue": "#3b4dff",
+    "lens": "#3b2698",
+    "face": "#010b5f",
+    "eyeHighlight": "#93fbfd",
+    "eye": "#4ce2eb"
+  },
+  "palette": {
+    "shell": "#9050f0",
+    "trim": "#3b4dff",
+    "lensBase": "#170b42",
+    "faceEdge": "#03062c"
+  },
+  "frameSize": 320,
+  "supersampling": 2,
+  "webpQuality": 0.98
+}

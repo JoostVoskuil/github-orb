@@ -1,0 +1,38 @@
+services:
+  dashboard:
+    build: .
+    image: github-orb-dashboard:node24
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:${ORB_DASHBOARD_PUBLISHED_PORT:-7421}:7420"
+    environment:
+      NODE_ENV: production
+      ORB_DASHBOARD_HOST: 0.0.0.0
+      ORB_DASHBOARD_PORT: 7420
+      ORB_DASHBOARD_PUBLISHED_PORT: ${ORB_DASHBOARD_PUBLISHED_PORT:-7421}
+      ORB_TOKEN: ${ORB_TOKEN:?Set ORB_TOKEN in .env}
+      ORB_GITHUB_PAT: ${ORB_GITHUB_PAT:-}
+      ORB_GITHUB_POLL_SEC: ${ORB_GITHUB_POLL_SEC:-60}
+      ORB_DATA_DIR: /data
+    volumes:
+      - dashboard-data:/data
+      - ./dist/firmware:/app/dist/firmware:ro
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:7420/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+volumes:
+  dashboard-data:

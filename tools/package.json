@@ -1,0 +1,25 @@
+{
+  "name": "github-orb-animation-tools",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "build": "npm run build --prefix ..",
+    "prepare:model": "npm run build && node ../dist/tools/prepare-model.js",
+    "prepare:mona": "npm run build && node ../dist/tools/prepare-mona.js",
+    "render": "npm run build && node ../dist/tools/render-frames.js",
+    "render:mona": "npm run build && node ../dist/tools/render-frames.js --mona",
+    "export:firmware": "npm run build && node ../dist/tools/export-firmware-assets.js",
+    "verify:dashboard": "npm run build && node ../dist/tools/verify-dashboard.js",
+    "verify:mona": "npm run build && node ../dist/tools/verify-mona.js",
+    "test": "npm run build && node --test ../dist/tst/tools/*.test.js"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.11.2",
+    "fflate": "^0.8.3",
+    "playwright": "^1.64.1",
+    "three": "^0.186.1"
+  }
+}

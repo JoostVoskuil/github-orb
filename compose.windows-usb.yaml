@@ -1,0 +1,8 @@
+services:
+  dashboard:
+    environment:
+      ORB_USB_SETUP: "on"
+    devices:
+      - "${ORB_USB_DEVICE:?Set ORB_USB_DEVICE to the WSL serial device}:${ORB_USB_DEVICE:?Set ORB_USB_DEVICE to the WSL serial device}:rw"
+    group_add:
+      - "${ORB_USB_GID:?Set ORB_USB_GID to the WSL serial device group ID}"

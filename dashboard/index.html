@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GitHub Orb Dashboard</title>
+    <meta name="theme-color" content="#0b1020" />
+    <link rel="icon" type="image/svg+xml" href="/dashboard/orb-mark.svg" />
+    <link rel="stylesheet" href="/dashboard/style.css" />
+  </head>
+  <body>
+    <header class="site-banner">
+      <div class="banner-copy">
+        <div class="brand">
+          <img src="/dashboard/orb-mark.svg" width="52" height="52" alt="" />
+          <div>
+            <p class="eyebrow">A little presence for your code</p>
+            <h1>GitHub <span>Orb</span></h1>
+          </div>
+        </div>
+        <p class="banner-description">Your Copilot companion. Your GitHub pulse.<br />One small Orb, connected to the work that matters.</p>
+        <div class="banner-tags" aria-label="Dashboard capabilities">
+          <span><i class="signal-dot" aria-hidden="true"></i> Copilot activity</span>
+          <span>GitHub notifications</span>
+          <span>ESP32-S3</span>
+        </div>
+      </div>
+      <div class="banner-art" aria-hidden="true">
+        <div class="orbit-line"></div>
+        <div class="mascot-disc copilot-disc">
+          <img src="/media/images/copilot-front.png" width="144" height="160" alt="" />
+        </div>
+        <div class="mascot-disc mona-disc">
+          <img src="/media/animations/mona-idle-poster.png" width="112" height="112" alt="" />
+        </div>
+        <span class="art-caption">Code meets character.</span>
+      </div>
+    </header>
+    <main data-mode="orb">
+      <section class="stage">
+        <div class="puck" id="puck">
+          <canvas id="display" width="480" height="480"></canvas>
+        </div>
+        <p class="caption">Dashboard preview · Waveshare ESP32-S3 2.1" · 480×480 · <span id="fps">–</span> fps</p>
+        <p class="hint">This preview follows Live Dashboard state; it is not a screen feed from the physical Orb.</p>
+        <a id="news" class="hint" target="_blank" rel="noopener noreferrer" hidden></a>
+        <fieldset id="activity-log">
+          <legend>Log</legend>
+          <ol id="log"></ol>
+          <p class="hint">Recent observer events and dashboard actions.</p>
+        </fieldset>
+      </section>
+
+      <aside class="panel">
+        <fieldset id="observer-configuration">
+          <legend>Copilot observer destinations</legend>
+          <div class="row">
+            <strong id="observer-summary" role="status">Checking observer configuration…</strong>
+            <button id="observer-refresh" type="button">Refresh status</button>
+          </div>
+          <ul id="observer-destinations" class="destination-list"></ul>
+          <p id="observer-action-status" class="hint" role="status"></p>
+          <details class="observer-details">
+            <summary>Installation &amp; configuration details</summary>
+            <p id="observer-installation" class="hint"></p>
+            <p id="observer-config-path" class="hint"></p>
+            <p class="hint">Saved destinations are used by new Copilot sessions. Reachable means the API responds; it does not prove an observer is running. Existing sessions keep the configuration they started with. Environment overrides in the Copilot host may differ.</p>
+          </details>
+        </fieldset>
+        <div id="mode-tabs" role="tablist" aria-label="Dashboard view">
+          <button id="orb-tab" type="button" role="tab" aria-selected="true" aria-controls="orb-panel" tabindex="0" data-mode="orb"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="3"/><path d="M9 2v4m6-4v4M9 18v4m6-4v4M2 9h4m-4 6h4m12-6h4m-4 6h4"/><circle cx="12" cy="12" r="2.5"/></svg>Live Orb</button>
+          <button id="dashboard-tab" type="button" role="tab" aria-selected="false" aria-controls="dashboard-panel" tabindex="-1" data-mode="dashboard"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/><circle cx="12" cy="10.5" r="3.5"/></svg>Live Dashboard</button>
+          <button id="animations-tab" type="button" role="tab" aria-selected="false" aria-controls="animations-panel" tabindex="-1" data-mode="animations"><svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m14 3 1.8 5.2L21 10l-5.2 1.8L14 17l-1.8-5.2L7 10l5.2-1.8L14 3ZM5 14l1.3 3.7L10 19l-3.7 1.3L5 24l-1.3-3.7L0 19l3.7-1.3L5 14Z"/></svg>Animations</button>
+        </div>
+        <section id="orb-panel" role="tabpanel" aria-labelledby="orb-tab">
+          <div class="orb-settings-column">
+          <p class="hint">Set up your physical ESP32 Orb below. Already connected? Your saved settings load automatically over Wi-Fi; USB is only needed for first-time setup, changing Wi-Fi, or installing the observer.</p>
+          <fieldset id="usb-setup">
+            <legend>1. Select your Orb</legend>
+            <label for="usb-port">Connected USB device</label>
+            <div class="row">
+              <select id="usb-port" aria-label="USB device">
+                <option value="">Scanning for an Orb…</option>
+              </select>
+              <button id="usb-refresh" type="button">Rescan</button>
+            </div>
+            <p id="usb-status" class="hint" role="status">Connect the Orb with a USB data cable, then select it here.</p>
+          </fieldset>
+          <section class="setup-card" aria-labelledby="wifi-heading">
+            <h2 id="wifi-heading">2. Connect to Wi-Fi</h2>
+            <p id="orb-connection-status" class="hint" role="status">Checking the saved Orb connection…</p>
+            <button id="orb-settings-load" type="button">Retry connection / reload settings</button>
+            <details id="wifi-connection">
+              <summary>Set up or change Wi-Fi</summary>
+              <form id="wifi-form">
+                <fieldset id="wifi-fields" disabled>
+                  <legend>Wi-Fi setup over USB</legend>
+                  <div class="settings-grid">
+                    <label>Wi-Fi name <input id="wifi-ssid" type="text" maxlength="32" autocomplete="off" placeholder="2.4 GHz network name" required /></label>
+                    <label>Passphrase <input id="wifi-password" type="password" minlength="8" maxlength="63" autocomplete="new-password" aria-describedby="wifi-help" /></label>
+                  </div>
+                  <p class="hint" id="wifi-help">Select a USB device in step 1 first. Use a 2.4 GHz network. Leave the passphrase empty only for an open network. Connecting restarts the Orb, then loads its settings.</p>
+                  <button id="wifi-connect" type="submit">Connect Orb to Wi-Fi</button>
+                </fieldset>
+              </form>
+            </details>
+            <p id="wifi-status" class="hint" role="status">Your existing Wi-Fi connection is kept unless you connect to a new network.</p>
+          </section>
+          <fieldset id="device-extension">
+            <legend>3. Connect Copilot</legend>
+            <button id="usb-install-observer" type="button" disabled>Install Extension for Live Orb</button>
+            <p class="hint">With a USB device selected and the Orb on Wi-Fi, add it as an observer destination. The summary above shows whether events are configured for this ESP32, the dashboard, or both. Start a fresh Copilot session after installation.</p>
+            <p id="orb-extension-status" class="hint" role="status">Select a USB device in step 1 to install or refresh the extension.</p>
+          </fieldset>
+          <h2 class="step-heading">4. Customize your Orb</h2>
+          <p id="orb-settings-status" class="hint" role="status">Settings unlock when the saved Orb connection is available.</p>
+          <form id="orb-settings-form">
+            <fieldset id="live-settings" disabled>
+              <legend>Orb settings</legend>
+              <p class="hint">These settings are saved to the physical ESP32 over Wi-Fi. They do not change its network or observer destinations.</p>
+              <section class="settings-section" aria-labelledby="github-heading">
+                <h2 id="github-heading">GitHub notifications</h2>
+                <label>GitHub PAT <input id="github-token" type="password" maxlength="512" autocomplete="new-password" placeholder="Leave blank to keep the saved PAT" aria-describedby="github-token-help" /></label>
+                <label><input id="github-token-clear" type="checkbox" /> Remove saved PAT and disable GitHub polling</label>
+                <p id="github-token-help" class="hint">Sent to and stored on the Orb, never in browser storage or dashboard logs.</p>
+                <label>Poll interval (seconds) <input id="github-poll-sec" type="number" min="30" max="3600" step="1" value="60" required /></label>
+                <p id="device-github-status" class="hint" role="status">Load settings to check whether the Orb has a saved PAT.</p>
+              </section>
+              <section class="settings-section" aria-labelledby="display-heading">
+                <h2 id="display-heading">Sound &amp; display</h2>
+                <label><input id="sound" type="checkbox" /> Enable sound on the physical Orb</label>
+                <label>Volume <input id="volume" type="range" min="0" max="1" step="0.05" /></label>
+                <label>Brightness <input id="brightness" type="range" min="0.05" max="1" step="0.05" /></label>
+                <p class="hint">Save to Orb to enable its onboard buzzer. Zero volume mutes it; the active buzzer has a fixed loudness at nonzero volume. Browser audio permission is not needed.</p>
+                <button id="orb-audio-test" type="button">Test Orb sound</button>
+                <p id="orb-audio-status" class="hint" role="status">Tests the physical buzzer using saved settings, without changing Copilot sessions.</p>
+              </section>
+              <section class="settings-section" aria-labelledby="quiet-heading">
+                <h2 id="quiet-heading">Quiet hours</h2>
+                <label><input id="qh-enabled" type="checkbox" /> Mute sound during quiet hours</label>
+                <div class="settings-grid">
+                  <label>From <input id="qh-start" type="text" maxlength="5" placeholder="22:00" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Quiet hours start, 24-hour HH:MM" required /></label>
+                  <label>To <input id="qh-end" type="text" maxlength="5" placeholder="08:00" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" aria-label="Quiet hours end, 24-hour HH:MM" required /></label>
+                </div>
+                <label>Orb timezone <input id="orb-timezone" type="text" maxlength="128" value="UTC0" placeholder="UTC0" required /></label>
+                <p class="hint">24-hour clock (HH:MM), using the Orb's POSIX timezone (for example, <code>UTC0</code>). The browser preview uses this computer's clock.</p>
+                <p class="hint" id="quiet-now"></p>
+              </section>
+              <div class="settings-actions">
+                <button id="orb-settings-save" type="submit">Save to Orb</button>
+              </div>
+              <p class="hint">Save to Orb applies sound, display, quiet hours and GitHub settings to the device. The PAT is cleared from this form after saving and is never sent back to the browser.</p>
+            </fieldset>
+          </form>
+          </div>
+          <div id="orb-sidebar">
+          <section id="demo-recording" aria-labelledby="demo-heading">
+            <h2 id="demo-heading" class="step-heading">Demo recording</h2>
+            <fieldset>
+              <legend>40-second Orb demo</legend>
+              <p class="hint">Plays a scripted story on the physical Orb for filming. Close other Copilot sessions first so only the demo session is shown.</p>
+              <div class="buttons">
+                <button id="demo-start" type="button">Play demo on Orb</button>
+                <button id="demo-stop" type="button" disabled>Stop demo</button>
+              </div>
+              <progress id="demo-progress" max="1" value="0" hidden aria-label="Demo progress"></progress>
+              <ol id="demo-steps"></ol>
+              <p id="demo-status" class="hint" role="status">Ready. Mona's alert stays on screen at the end; tap the Orb to dismiss it.</p>
+            </fieldset>
+          </section>
+          <section id="device-maintenance" aria-labelledby="device-management-heading">
+            <h2 id="device-management-heading" class="step-heading">Device management</h2>
+          <fieldset id="update-transport">
+            <legend>Update connection</legend>
+            <div class="update-transport-options">
+              <label><input type="radio" name="update-transport" value="wifi" checked /> Update through Wi-Fi</label>
+              <label><input type="radio" name="update-transport" value="usb" /> Update through USB</label>
+            </div>
+            <p id="update-transport-hint" class="hint">Uses the saved Orb Wi-Fi connection. No USB cable is needed.</p>
+          </fieldset>
+          <fieldset id="asset-upload">
+            <legend>SD card assets</legend>
+            <div class="buttons">
+              <button id="asset-upload-button" type="button">Upload animations and sounds</button>
+              <button id="asset-restart-button" type="button" disabled>Restart to load assets</button>
+            </div>
+            <progress id="asset-progress" hidden aria-label="Uploading SD card assets"></progress>
+            <p id="asset-status" class="hint" role="status">The dashboard uploads the published assets from <code>dist/sdcard</code> through the selected connection.</p>
+            <p class="hint">Uploads replace <code>/animations.orb</code> and <code>/sounds.json</code> on the inserted SD card. The Orb restarts only when you press the restart button.</p>
+          </fieldset>
+          <fieldset id="firmware-upload">
+            <legend>Firmware</legend>
+            <div class="buttons">
+              <button id="firmware-upload-button" type="button" disabled>Upload latest firmware</button>
+            </div>
+            <progress id="firmware-progress" hidden max="100" value="0" aria-label="Firmware upload progress"></progress>
+            <p id="firmware-status" class="hint" role="status">Checking for a firmware binary in <code>dist/firmware</code>…</p>
+            <p class="hint">The newest <code>.bin</code> in <code>dist/firmware</code> is sent through the selected connection. The Orb restarts after a successful update. Older firmware needs one initial developer USB flash to enable both update connections.</p>
+          </fieldset>
+          </section>
+          </div>
+        </section>
+        <section id="dashboard-panel" role="tabpanel" aria-labelledby="dashboard-tab" hidden>
+          <p class="hint">Connect Copilot and GitHub notifications to this local dashboard service.</p>
+          <fieldset>
+            <legend>Browser preview audio</legend>
+            <button id="audio-unlock" type="button">Enable audio in browser</button>
+            <p class="hint">Only unlocks chimes for this browser's dashboard preview. It does not enable or test the physical Orb buzzer.</p>
+          </fieldset>
+          <fieldset id="dashboard-connection">
+            <legend>Local dashboard service</legend>
+            <p><span id="status" class="pill off">offline</span> <span id="mood-now"></span></p>
+            <p id="github-status" class="hint">GitHub notifications: checking…</p>
+            <p id="dashboard-extension-status" class="hint" role="status">See the observer destinations above to check whether this dashboard is configured.</p>
+            <button id="dashboard-install-observer" type="button">Install Extension for Live Dashboard</button>
+            <p class="hint">This adds the local dashboard to the shared observer config. Copilot events are sent to every configured destination. Start a fresh Copilot session after installation.</p>
+          </fieldset>
+          <form id="dashboard-github-form">
+            <fieldset>
+              <legend>GitHub notifications</legend>
+              <label>Classic GitHub PAT with the <code>notifications</code> scope
+                <input id="dashboard-github-token" type="password" maxlength="512" autocomplete="new-password" placeholder="Enter token to save or replace" />
+              </label>
+              <div class="buttons">
+                <button id="dashboard-github-save" type="submit">Save GitHub token</button>
+                <button id="dashboard-github-clear" type="button">Remove saved token</button>
+              </div>
+              <p class="hint">The token is stored only in the dashboard service's private data directory and is never sent back to this page. A server-configured <code>ORB_GITHUB_PAT</code> takes precedence.</p>
+              <p id="dashboard-github-status" class="hint" role="status">Checking GitHub notification setup…</p>
+            </fieldset>
+          </form>
+        </section>
+        <section id="animations-panel" role="tabpanel" aria-labelledby="animations-tab" hidden>
+          <fieldset id="preview-controls">
+            <legend>Animations</legend>
+            <div id="scenario-buttons">
+              <p class="hint">Copilot</p>
+              <div class="buttons">
+                <button type="button" data-scenario="resting">Resting</button>
+                <button type="button" data-scenario="offline">No connection</button>
+                <button type="button" data-scenario="activity">Copilot activity</button>
+                <button type="button" data-scenario="approval">Needs approval</button>
+                <button type="button" data-scenario="sessions">Three sessions</button>
+                <button type="button" data-scenario="carousel">Session carousel</button>
+                <button type="button" data-scenario="done">Completed</button>
+                <button type="button" data-scenario="error">Error</button>
+              </div>
+              <p class="hint">GitHub alerts &amp; Mona animations</p>
+              <div class="buttons">
+                <button type="button" data-scenario="monaIdle">Mona resting</button>
+                <button type="button" data-scenario="monaOffline">Mona offline</button>
+                <button type="button" data-scenario="monaThinking">Mona thinking</button>
+                <button type="button" data-scenario="monaTool">Mona working</button>
+                <button type="button" data-scenario="prAssigned">PR assigned</button>
+                <button type="button" data-scenario="monaDone">Mona completed</button>
+                <button type="button" data-scenario="workflowFailure">Workflow failed</button>
+                <button type="button" data-scenario="criticalSecurity">Security alert</button>
+                <button type="button" data-scenario="workingSecurity">Working + security alert</button>
+                <button type="button" data-scenario="monaScared">Scared Mona</button>
+              </div>
+            </div>
+            <p id="scenario-status" class="hint">Previews are local and never change Live state.</p>
+          </fieldset>
+        </section>
+      </aside>
+    </main>
+    <footer class="site-footer">
+      <div class="footer-brand">
+        <img src="/dashboard/orb-mark.svg" width="32" height="32" alt="" />
+        <div>
+          <strong>GitHub Orb</strong>
+          <p>Copyright &copy; 2026 Joost Voskuil</p>
+          <p>Project code: <a href="https://polyformproject.org/licenses/noncommercial/1.0.0">PolyForm Noncommercial 1.0.0</a>.</p>
+        </div>
+      </div>
+      <div class="footer-attribution">
+        <p class="eyebrow">Built with character</p>
+        <p>3D model: <a href="https://github.com/martinwoodward/octoprints">Martin Woodward &amp; octoprints contributors</a>.
+          <a href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a> &middot; GitHub mascot.
+          Adapted materials, lighting and animation. No GitHub affiliation.</p>
+        <p class="footer-license-note">Third-party model and mascot assets retain their own licenses.</p>
+      </div>
+    </footer>
+    <script type="module" src="/dist/dashboard/dashboard.js"></script>
+  </body>
+</html>

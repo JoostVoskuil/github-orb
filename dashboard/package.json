@@ -1,0 +1,13 @@
+{
+  "name": "github-orb-dashboard",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "build": "npm run build --prefix ..",
+    "start": "npm run build && node ../dist/dashboard/serve.js",
+    "test": "npm run build && node --test ../dist/tst/dashboard/*.test.js"
+  }
+}

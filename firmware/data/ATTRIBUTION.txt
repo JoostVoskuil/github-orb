@@ -1,0 +1,19 @@
+Copilot model from octoprints by Martin Woodward and contributors.
+Source: https://github.com/martinwoodward/octoprints
+Revision: 981a85f0bec9d1a9c280fd5719d0d797852229c4
+Source path: models/copilot/copilot_multicolor.3mf
+License: Creative Commons Attribution-NonCommercial 4.0 International
+License URL: https://creativecommons.org/licenses/by-nc/4.0/
+
+Adaptations: mesh extraction, display materials, lighting, procedural animation,
+frame rendering, JPEG conversion, and alpha-mask compression for the GitHub Orb.
+No GitHub affiliation or trademark permission is implied.
+
+Mona model from octoprints by Martin Woodward and contributors. GitHub mascot.
+Source: https://github.com/martinwoodward/octoprints
+Revision: 981a85f0bec9d1a9c280fd5719d0d797852229c4
+Source path: models/mona/mona_multicolor.3mf
+License: CC-BY-NC-4.0
+License URL: https://creativecommons.org/licenses/by-nc/4.0/
+Adaptations: Mesh extracted from 3MF; intrinsic orientation retained rather than print-bed placement; 7 split-painted micro-faces collapsed to modal decoded filament (ties use lowest index); smooth display normals, source filament colors, lighting, calm news poses, transparent frame rendering, JPEG conversion and alpha-mask compression.
+Noncommercial use only under CC BY-NC 4.0; commercial distribution requires separate permission. No GitHub affiliation or trademark permission is implied.

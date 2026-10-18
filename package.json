@@ -1,0 +1,27 @@
+{
+  "name": "github-orb",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "check": "tsc --project tsconfig.json --noEmit",
+    "test": "npm run build && node --test dist/tst/observer/*.test.js dist/tst/firmware/*.test.js dist/tst/dashboard/*.test.js dist/tst/tools/*.test.js",
+    "dashboard": "npm run build && node dist/dashboard/serve.js",
+    "firmware:build": "npm run build && node dist/tools/build-firmware.js",
+    "observer:install": "npm run build && node dist/observer/install-observer.js"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/three": "^0.186.0",
+    "fast-xml-parser": "^5.11.2",
+    "fflate": "^0.8.3",
+    "playwright": "^1.64.1",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "serialport": "^13.0.0"
+  }
+}

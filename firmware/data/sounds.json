@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "sounds": {
+    "copilotDone": [[70, 55], [85, 0]],
+    "copilotNeedsInput": [[110, 75], [110, 0]],
+    "monaPrAssigned": [[55, 45], [105, 0]],
+    "monaReviewRequested": [[105, 45], [55, 0]],
+    "monaWorkflow": [[65, 50], [65, 50], [130, 0]],
+    "monaSecurity": [[45, 40], [45, 40], [45, 40], [45, 0]],
+    "monaNotification": [[85, 0]]
+  }
+}
