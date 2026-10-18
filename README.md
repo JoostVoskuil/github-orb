@@ -33,7 +33,7 @@ GitHub Orb brings the work happening in your editor to a small, characterful dis
 
 ## Artwork license
 
-The adapted Copilot and Mona models by Martin Woodward and contributors (octoprints), and their derived animation assets, are licensed under **CC BY-NC 4.0**. Both use revision `981a85f0bec9d1a9c280fd5719d0d797852229c4`; acquiring Mona at that revision does not refresh Copilot. Source, hashes and adaptations are recorded in `media/copilot/source.json` and `media/mona/source.json`; retain both `LICENSE.txt` files and `firmware/data/ATTRIBUTION.txt`. Commercial use requires separate permission. The copyright license does not grant GitHub trademark rights or imply GitHub affiliation.
+The adapted Copilot and Mona models by Martin Woodward and contributors (octoprints), and their derived animation assets, are licensed under **CC BY-NC 4.0**. Commercial use requires separate permission. The copyright license does not grant GitHub trademark rights or imply GitHub affiliation.
 
 ## Project license
 

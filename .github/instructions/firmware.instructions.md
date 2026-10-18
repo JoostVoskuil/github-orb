@@ -9,4 +9,4 @@ applyTo: "firmware/**"
 - Standing user preference: after a firmware-affecting change, build, run relevant tests, and **immediately upload to the attached ESP32 in the same task**, without waiting for another flash request. Respect an explicit no-upload instruction; documentation-only changes do not require flashing.
 - Detect the current USB port and verify upload and runtime results. If the board is absent or ambiguous, report the blocker rather than claim success.
 - Upload the application only. Preserve SD assets and provisioning; do not routinely use `uploadfs`, format, erase, or reset credentials.
-- When verified tooling, hardware, or upload steps change, update the upload skill directly in that same task so it remains accurate.
+- When verified tooling, hardware, or upload steps change, update the upload skill directly in that same task so it remains accurate. Keep the quick compile/USB-upload steps in [getting started](../../docs/getting-started.md) and the full build, flash, OTA, and recovery procedures in [the firmware guide](../../firmware/README.md) aligned as well.

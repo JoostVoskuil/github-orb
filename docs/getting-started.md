@@ -9,6 +9,30 @@ GitHub Orb runs on the Waveshare **ESP32-S3-Touch-LCD-2.1B** and can be managed 
 
 The board driver is revision-specific. Verify the revision printed on the board before flashing. For firmware installation and recovery, see [firmware build and recovery](../firmware/README.md).
 
+## Build and upload firmware
+
+Install PlatformIO Core or the PlatformIO IDE extension, connect the Orb to USB, and run these commands from the repository root. Verify the hardware revision before flashing.
+
+Build the firmware:
+
+```sh
+pio run -d firmware -e waveshare_s3_touch_lcd_21
+```
+
+Find the connected board's serial port:
+
+```sh
+pio device list
+```
+
+Upload the application, replacing `<PORT>` with the port reported for the Orb:
+
+```sh
+pio run -d firmware -e waveshare_s3_touch_lcd_21 --target upload --upload-port <PORT>
+```
+
+The upload command builds the application before flashing it. Close any serial monitor that is using the port. This uploads firmware only; it does not copy animation or sound assets to the microSD card. For asset preparation, OTA updates, diagnostics, and recovery details, see [firmware build and recovery](../firmware/README.md).
+
 ## Configure Wi-Fi with the dashboard
 
 The recommended setup uses the host-native Orb Dashboard, which can access the Orb over USB. From the repository root, run:

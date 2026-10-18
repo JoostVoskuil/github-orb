@@ -57,4 +57,4 @@ Do not expose Wi-Fi passwords, API tokens, or GitHub PATs in logs or reports.
 - Wi-Fi provisioning: `firmware/src/device_config.cpp`
 - Boot orchestration: `firmware/src/main.cpp`
 - Device settings model: `firmware/include/device_config.h`
-- User setup documentation: `firmware/README.md` and the repository `README.md`
+- User setup documentation: [`docs/getting-started.md`](../../../docs/getting-started.md), [`docs/dashboard.md`](../../../docs/dashboard.md), and [`firmware/README.md`](../../../firmware/README.md).

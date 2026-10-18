@@ -9,7 +9,7 @@ description: "Build, test, flash, and verify this project's USB-attached Wavesha
 
 After a firmware-affecting change, build, test, and upload it directly to the attached board in the same task. Do not ask the user to request flashing again. Respect any explicit request not to flash. Documentation-only changes do not require a flash.
 
-Update this skill immediately when a verified change to tooling, hardware configuration, upload procedure, or diagnostics makes it stale. Do not turn an unverified hypothesis into a documented fact.
+Update this skill immediately when a verified change to tooling, hardware configuration, upload procedure, or diagnostics makes it stale. Keep the quick compile/USB-upload steps in [`docs/getting-started.md`](../../../docs/getting-started.md) and the full build, flash, OTA, and recovery procedures in [`firmware/README.md`](../../../firmware/README.md) synchronized with verified changes. Do not turn an unverified hypothesis into a documented fact.
 
 ## Known working target
 
@@ -55,7 +55,7 @@ npm test --prefix dashboard
 git diff --check
 ```
 
-The native decoder tests need JPEGDEC sources downloaded by the firmware build, and a native C++ compiler. Run other affected suites (`npm test --prefix bridge` / `npm test --prefix tools`) when their behavior or generated assets change. If validation fails, fix relevant failures before uploading. A successful build alone is not a successful flash.
+The native decoder tests need JPEGDEC sources downloaded by the firmware build, and a native C++ compiler. Run `npm test --prefix tools` when animation or asset-generation behavior changes; use root `npm test` for the complete repository suite. If validation fails, fix relevant failures before uploading. A successful build alone is not a successful flash.
 
 ## 3. Detect the connected board
 

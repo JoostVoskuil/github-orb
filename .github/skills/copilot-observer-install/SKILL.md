@@ -33,6 +33,8 @@ The default private file is `observer/config.json`; USB provisioning writes that
 
 For the dashboard:
 
+Ensure the dashboard has a stable `ORB_TOKEN` before starting it. Docker Compose requires it in `.env`; host-native `npm run dashboard` does not load `.env` and needs the variable in its process environment. The Live Dashboard install reports `dashboard_observer_token_required` when the running service has no token. Restart/recreate the service after changing the environment. Never print or paste the token into logs or commands.
+
 ```sh
 docker compose up --build -d dashboard
 curl -fsS http://127.0.0.1:7421/health
@@ -41,6 +43,8 @@ curl -fsS http://127.0.0.1:7421/health
 Prepare a separate private file, for example `~/.copilot/orb/dashboard.json`, with host `127.0.0.1`, port `7421`, and the dashboard's existing `ORB_TOKEN`. Transfer the token programmatically, without logging it. Reuse `saveOrbConfig` from `dist/observer/config-store.js` for atomic `0600` storage. Do not put secrets in shell arguments or tracked files. Preserve unrelated config keys.
 
 For a physical board, first confirm observer-capable firmware is already deployed. Installation alone does not update the board.
+
+See [`docs/dashboard.md`](../../../docs/dashboard.md) for dashboard configuration and [`docs/getting-started.md`](../../../docs/getting-started.md) for device setup.
 
 ## 3. Install or refresh for both hosts
 
