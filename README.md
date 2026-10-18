@@ -1,5 +1,10 @@
 # GitHub Orb
 
+[![Watch GitHub Orb on YouTube](https://img.youtube.com/vi/QgYR_15GOpI/hqdefault.jpg)](https://www.youtube.com/watch?v=QgYR_15GOpI)
+
+![GitHub Orb displaying Copilot activity](media/readme/fysicalorb.png)
+![GitHub Orb dashboard showing the Live Dashboard tab](media/readme/dashboard.png)
+
 A standalone GitHub activity display for the Waveshare **ESP32-S3-Touch-LCD-2.1B**, showing Copilot activity and GitHub news. The ESP32 connects directly to Wi-Fi, runs an onboard HTTP REST server (`github-orb.local:7420`) for Copilot SDK observers, polls GitHub notifications over HTTPS on a background FreeRTOS task, supports dual-slot OTA updates (`POST /ota` and `/firmware.bin` on the SD card), and streams all 624 animation frames from the microSD card.
 
 ```mermaid
