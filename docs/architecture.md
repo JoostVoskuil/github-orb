@@ -1,5 +1,15 @@
 # Architecture and protocol
 
+```mermaid
+flowchart LR
+        SDK[Shared CLI / VS Code SDK observer] -->|explicit session state| E[ESP32-S3 Orb :7420]
+        SDK -->|explicit session state| D[Docker dashboard service :7420]
+        GH[GitHub unread notifications] -->|HTTPS polling| E
+        GH -->|HTTPS polling| D
+        B[Browser dashboard] -->|Live GET /state| D
+        SD[Onboard microSD] -->|animations.orb + sounds.json + config/OTA| E
+```
+
 ## Responsibility boundary
 
 The ESP32-S3 GitHub Orb runs standalone and owns physical-device session aggregation, mood priority, event-to-mascot/mood selection, optional GitHub notification polling, sticky mascot/news selection, the HTTP REST + OTA server (`:7420`), mDNS (`github-orb.local`), playback timing, one-shot behavior, disconnected fallback, overlays, brightness, sounds, and SD media storage. The Docker dashboard service implements the compatible state/event API and GitHub polling for the browser UI and SDK observer. Its Live display is independent of the physical Orb; local-only management endpoints can provision, configure, and update the device using its saved connection. `protocol/emotions.json` defines mood animations, labels, rings, and browser chimes; the physical buzzer loads its short pulse patterns from `/sounds.json` on the SD card.
