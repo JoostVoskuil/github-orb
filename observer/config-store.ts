@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { constants, lstat, mkdir, open, readFile, rename, unlink } from "node:fs/promises"
 import { homedir } from "node:os"
-import { dirname, isAbsolute, join, resolve } from "node:path"
+import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 export interface OrbConnectionConfig {
@@ -27,6 +27,17 @@ export function orbConfigPath(): string {
 export function copilotOrbConfigPath(): string {
   const home = resolve(process.env.COPILOT_HOME || join(homedir(), ".copilot"))
   return join(home, "orb", "config.json")
+}
+
+// In Docker, COPILOT_HOME points at a bind mount of the host's Copilot folder. Entries that
+// the host Copilot process loads must name the host path, not the container path.
+export function hostCopilotPath(path: string): string {
+  const containerHome = process.env.COPILOT_HOME
+  const hostHome = process.env.ORB_HOST_COPILOT_HOME
+  if (!containerHome || !hostHome) return path
+  const relativePath = relative(resolve(containerHome), resolve(path))
+  if (relativePath.startsWith("..") || isAbsolute(relativePath)) return path
+  return join(resolve(hostHome), relativePath)
 }
 
 function validHost(host: string): boolean {

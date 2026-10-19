@@ -3,6 +3,7 @@ import {
   ATTENTION_PREVIEW_MAX,
   ATTENTION_REASON_MAX,
   DISPLAY_ONLY_ATTENTION,
+  validPermissionCommand,
   type AttentionKind,
   type CopilotActivity,
   type CopilotState,
@@ -35,6 +36,7 @@ export interface ObserverState {
 export interface ObserverReducerOptions {
   now?: () => number
   nonce?: () => string
+  permissionDecisions?: boolean
 }
 
 interface PendingRequest {
@@ -46,6 +48,8 @@ interface PendingRequest {
   kind: AttentionKind
   reason?: string
   preview?: string
+  command?: string
+  actionable?: boolean
 }
 
 function id(value: unknown): string | undefined {
@@ -104,13 +108,15 @@ function urlHost(value: unknown): string | undefined {
 }
 
 // Reduces a permission request to an allowlisted kind, the model's stated intention and a short preview.
-export function permissionAttention(data: Record<string, unknown>): Pick<PendingRequest, "kind" | "reason" | "preview"> {
+function permissionSummary(data: Record<string, unknown>, decisions = false): Pick<PendingRequest, "kind" | "reason" | "preview" | "command" | "actionable"> {
   const request = record(data.promptRequest) ?? record(data.permissionRequest) ?? {}
   const reason = text(request.intention, ATTENTION_REASON_MAX)
   switch (request.kind) {
     case "shell":
     case "commands":
-      return { kind: "shell", reason, preview: firstLine(request.fullCommandText) }
+      return { kind: "shell", reason, preview: firstLine(request.fullCommandText),
+        ...(decisions && validPermissionCommand(request.fullCommandText)
+          ? { command: request.fullCommandText, actionable: true } : {}) }
     case "write":
       return { kind: "write", reason, preview: basename(request.fileName) }
     case "read":
@@ -133,6 +139,27 @@ export function permissionAttention(data: Record<string, unknown>): Pick<Pending
     default:
       return { kind: "other", reason }
   }
+}
+
+// Canonical ordering makes the reviewed structured request stable across SDK events and polls.
+function canonicalRequest(value: unknown): string | undefined {
+  try {
+    return JSON.stringify(value, (_key, item: unknown) => {
+      const object = record(item)
+      return object ? Object.fromEntries(Object.keys(object).sort().map(key => [key, object[key]])) : item
+    }, 2)
+  } catch {
+    return undefined
+  }
+}
+
+export function permissionAttention(data: Record<string, unknown>, decisions = false): Pick<PendingRequest, "kind" | "reason" | "preview" | "command" | "actionable"> {
+  const details = permissionSummary(data, decisions)
+  if (!decisions || details.kind === "shell" || details.kind === "other") return details
+  // A basename/host/tool label is not enough to consent: include every permission field,
+  // including full paths, URLs and arguments. Oversized requests remain computer-only.
+  const command = canonicalRequest(record(data.promptRequest) ?? record(data.permissionRequest))
+  return validPermissionCommand(command) ? { ...details, command, actionable: true } : details
 }
 
 export class ObserverReducer {
@@ -158,11 +185,13 @@ export class ObserverReducer {
   private known = false
   private readonly now: () => number
   private readonly nonce: () => string
+  private readonly permissionDecisions: boolean
   ended = false
 
   constructor(options: ObserverReducerOptions = {}) {
     this.now = options.now ?? Date.now
     this.nonce = options.nonce ?? (() => randomBytes(8).toString("hex"))
+    this.permissionDecisions = options.permissionDecisions ?? false
   }
 
   private remember(set: Set<string>, key: string): void {
@@ -186,7 +215,7 @@ export class ObserverReducer {
     requestId: string | undefined,
     agent: string,
     toolId: string | undefined,
-    details: Pick<PendingRequest, "kind" | "reason" | "preview">,
+    details: Pick<PendingRequest, "kind" | "reason" | "preview" | "command" | "actionable">,
     permission = false,
   ): void {
     if (!requestId || this.settled.has(`request:${requestId}`) || this.requests.has(requestId)) return
@@ -198,7 +227,8 @@ export class ObserverReducer {
       toolId,
       localId: this.nonce(),
       kind: details.kind,
-      ...(displayOnly ? {} : { reason: details.reason, preview: details.preview }),
+      ...(displayOnly ? {} : { reason: details.reason, preview: details.preview, command: details.command,
+        actionable: permission ? details.actionable : undefined }),
     })
     this.known = true
   }
@@ -211,6 +241,24 @@ export class ObserverReducer {
     return false
   }
 
+  /** Resolve only the displayed actionable nonce; SDK request IDs never leave this process. */
+  permissionRequestId(localId: string): string | undefined {
+    const first = this.requests.entries().next().value
+    if (!first) return undefined
+    const [requestId, request] = first
+    return request.permission && request.actionable && request.localId === localId ? requestId : undefined
+  }
+
+  matchesPermission(localId: string, value: unknown): boolean {
+    const requestId = this.permissionRequestId(localId)
+    if (!requestId) return false
+    const current = this.requests.get(requestId)!
+    const details = permissionAttention({ promptRequest: value }, this.permissionDecisions)
+    // Do not apply a reviewed decision if a host unexpectedly changes a request in place.
+    return current.kind === details.kind && current.reason === details.reason &&
+      current.preview === details.preview && current.command === details.command
+  }
+
   /**
    * Reconciles permission prompts with the host's pending list. Some hosts do not deliver
    * permission events to extensions, so polling is the authoritative source.
@@ -220,7 +268,12 @@ export class ObserverReducer {
     for (const item of items) {
       pending.add(item.requestId)
       const request = record(item.request)
-      this.request(item.requestId, "", id(request?.toolCallId), permissionAttention({ promptRequest: request }), true)
+      const details = permissionAttention({ promptRequest: request }, this.permissionDecisions)
+      const previous = this.requests.get(item.requestId)
+      // Changed review content requires a fresh nonce and a new human decision.
+      if (previous?.permission && (previous.kind !== details.kind || previous.reason !== details.reason ||
+        previous.preview !== details.preview || previous.command !== details.command)) this.requests.delete(item.requestId)
+      this.request(item.requestId, previous?.agent ?? "", id(request?.toolCallId), details, true)
     }
     // A brief grace period avoids racing an event that arrived before the host's history caught up.
     const now = this.now()
@@ -282,7 +335,7 @@ export class ObserverReducer {
         break
       case "permission.requested":
         const permission = record(d.promptRequest) ?? record(d.permissionRequest)
-        this.request(requestId, agent, toolId ?? id(permission?.toolCallId), permissionAttention(d), true)
+        this.request(requestId, agent, toolId ?? id(permission?.toolCallId), permissionAttention(d, this.permissionDecisions), true)
         break
       case "user_input.requested":
       case "elicitation.requested":
@@ -417,6 +470,8 @@ export class ObserverReducer {
         kind: request.kind,
         ...(request.reason ? { reason: request.reason } : {}),
         ...(request.preview ? { preview: request.preview } : {}),
+        ...(request.command ? { command: request.command } : {}),
+        ...(request.actionable ? { actionable: true } : {}),
         pending: Math.min(255, this.requests.size),
       }
       return { state: "needsInput", tool: null, ...metadata, attention }

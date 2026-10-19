@@ -8,7 +8,13 @@ export type AttentionKind = (typeof ATTENTION_KINDS)[number]
 export const DISPLAY_ONLY_ATTENTION: readonly AttentionKind[] = ["question", "plan", "limits"]
 export const ATTENTION_REASON_MAX = 80
 export const ATTENTION_PREVIEW_MAX = 60
+export const ATTENTION_COMMAND_MAX = 1024
 export type ObserverEventName = "observerState" | "observerEnd"
+
+export interface PermissionDecision {
+  attentionId: string
+  decision: "approve" | "deny"
+}
 
 export interface ObserverAttention {
   // Opaque per-request nonce created by the observer; never the SDK request ID.
@@ -16,6 +22,9 @@ export interface ObserverAttention {
   kind: AttentionKind
   reason?: string
   preview?: string
+  // Only advertised when the observer can resolve this pending permission.
+  actionable?: boolean
+  command?: string
   pending: number
 }
 
@@ -58,10 +67,23 @@ export function validAttentionId(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{16}$/.test(value)
 }
 
+export function validPermissionDecision(value: unknown): value is PermissionDecision {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false
+  const p = value as Record<string, unknown>
+  return Object.keys(p).every(key => key === "attentionId" || key === "decision") &&
+    validAttentionId(p.attentionId) && (p.decision === "approve" || p.decision === "deny")
+}
+
+export function validPermissionCommand(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0 &&
+    new TextEncoder().encode(value).length <= ATTENTION_COMMAND_MAX &&
+    !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/u.test(value)
+}
+
 export function validAttention(value: unknown): value is ObserverAttention {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false
   const a = value as Record<string, unknown>
-  const allowed = new Set(["id", "kind", "reason", "preview", "pending"])
+  const allowed = new Set(["id", "kind", "reason", "preview", "pending", "actionable", "command"])
   if (Object.keys(a).some((key) => !allowed.has(key))) return false
   const displayOnly = DISPLAY_ONLY_ATTENTION.includes(a.kind as AttentionKind)
   return (
@@ -70,6 +92,9 @@ export function validAttention(value: unknown): value is ObserverAttention {
     Number.isInteger(a.pending) &&
     Number(a.pending) >= 1 &&
     Number(a.pending) <= 255 &&
+    (a.actionable === undefined || (typeof a.actionable === "boolean" && (!a.actionable || !displayOnly))) &&
+    (a.command === undefined || (!displayOnly && validPermissionCommand(a.command))) &&
+    (a.actionable !== true || validPermissionCommand(a.command)) &&
     (a.reason === undefined || (!displayOnly && bounded(a.reason, ATTENTION_REASON_MAX))) &&
     (a.preview === undefined || (!displayOnly && bounded(a.preview, ATTENTION_PREVIEW_MAX)))
   )

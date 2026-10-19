@@ -7,6 +7,7 @@
 
 #include "board.h"
 #include "offline_indicator.h"
+#include "permission_review.h"
 #include "ring_motion.h"
 #include "sleeping_indicator.h"
 
@@ -229,6 +230,17 @@ void Renderer::setState(const OrbState &state) {
        (overlayWasWorking && state_.sessions[sessionIndex(overlaySource_, overlaySession_)].backgroundOnly))) overlay_ = OverlayMode::None;
   if (overlay_ == OverlayMode::Notification &&
       (!state_.mona || strcmp(state_.alert.id, overlayAlertId_))) overlay_ = OverlayMode::None;
+  if (overlay_ == OverlayMode::Approval) {
+    const int index = sessionIndex(overlaySource_, overlaySession_);
+    OrbState::PermissionReviewDetails current;
+    if (index < 0 || !state_.sessions[index].attention.active || state_.sessions[index].state != Mood::NeedsInput ||
+      strcmp(state_.sessions[index].attention.id, overlayAttentionId_) ||
+      (overlayToken_ && (!reviewProvider_ || !reviewProvider_(overlaySession_, overlayAttentionId_, current, reviewContext_) ||
+       current.token != overlayToken_))) {
+      overlay_ = OverlayMode::None;
+      pressActive_ = false;
+    }
+  }
   const uint32_t now = millis();
   carousel_.update(incoming_, now, state_.mona || state_.copilotNotification || state_.mood == Mood::Disconnected || overlay_ != OverlayMode::None);
   const int selected = carousel_.selected(incoming_);
@@ -596,6 +608,11 @@ void Renderer::open(uint8_t index, uint32_t now) {
   const OrbState::SessionInfo &info = state_.sessions[index];
   const bool approval = info.state == Mood::NeedsInput && info.attention.active;
   overlay_ = approval ? OverlayMode::Approval : OverlayMode::Session;
+  review_ = OrbState::PermissionReviewDetails{};
+  strlcpy(overlayAttentionId_, approval ? info.attention.id : "", sizeof(overlayAttentionId_));
+  if (approval && reviewProvider_) reviewProvider_(info.sessionId, info.attention.id, review_, reviewContext_);
+  overlayToken_ = review_.token;
+  decisionPending_ = info.attention.decisionPending;
   strlcpy(overlaySession_, info.sessionId, sizeof(overlaySession_));
   strlcpy(overlaySource_, info.source, sizeof(overlaySource_));
   overlayUntilMs_ = now + (approval ? 30000 : 10000);
@@ -618,10 +635,39 @@ void Renderer::tap(uint16_t x, uint16_t y, uint32_t now) {
     return;
   }
   if (state_.mona || state_.copilotNotification || state_.mood == Mood::Disconnected || !state_.sessionInfoCount) return;
+  // Central controls win over arc geometry (card corners overlap the ring hit area).
+  if (overlay_ == OverlayMode::Approval) {
+    const int index = sessionIndex(overlaySource_, overlaySession_);
+    if (index < 0) return;
+    const auto &info = state_.sessions[index];
+    const auto &attention = info.attention;
+    if (!attention.active || strcmp(attention.id, overlayAttentionId_) || info.state != Mood::NeedsInput) return;
+    const PermissionReview::Hit hit = PermissionReview::hit(x, y);
+    if (hit != PermissionReview::Hit::None) {
+      if (!overlayToken_ || !attention.actionable || displayOnlyAttention(attention.kind) || decisionPending_ || attention.decisionPending) return;
+      if (hit == PermissionReview::Hit::Deny ||
+          (hit == PermissionReview::Hit::Approve && PermissionReview::canApprove(attention.actionable,
+            displayOnlyAttention(attention.kind), decisionPending_ || attention.decisionPending))) {
+        if (hasPermissionIntent_) return;
+        strlcpy(permissionIntent_.sessionId, info.sessionId, sizeof(permissionIntent_.sessionId));
+        strlcpy(permissionIntent_.attentionId, attention.id, sizeof(permissionIntent_.attentionId));
+        permissionIntent_.token = overlayToken_;
+        permissionIntent_.approve = hit == PermissionReview::Hit::Approve;
+        hasPermissionIntent_ = true;
+        decisionPending_ = true;
+      }
+      overlayUntilMs_ = now + 30000;
+      forceRender_ = true;
+      return;
+    }
+    // Tapping reviewed text never advances to a different prompt.
+    if (Box{kApprovalX, kApprovalY, kApprovalW, kApprovalH}.contains(x, y)) return;
+  }
   const int arc = arcSlot(x, y);
   const int slot = arc;
   if (slot >= 0) {
-    if (state_.sessions[slot].backgroundOnly || carousel_.selected(incoming_) == slot) open(slot, now);
+    if (state_.sessions[slot].backgroundOnly || state_.sessions[slot].state == Mood::NeedsInput ||
+      carousel_.selected(incoming_) == slot) open(slot, now);
     else {
       carousel_.select(incoming_, slot, now, true);
       overlay_ = OverlayMode::None;
@@ -644,6 +690,14 @@ void Renderer::tap(uint16_t x, uint16_t y, uint32_t now) {
   open(state_.primarySession < state_.sessionInfoCount ? state_.primarySession : 0, now);
 }
 
+bool Renderer::takePermissionDecision(OrbState::PermissionIntent &intent) {
+  if (!hasPermissionIntent_) return false;
+  intent = permissionIntent_;
+  permissionIntent_ = OrbState::PermissionIntent{};
+  hasPermissionIntent_ = false;
+  return true;
+}
+
 bool Renderer::takeAlertAcknowledgement(char *id, size_t size) {
   if (!pendingAlertId_[0] || !id || size < sizeof(pendingAlertId_)) return false;
   strlcpy(id, pendingAlertId_, size);
@@ -655,8 +709,11 @@ void Renderer::touch(bool down, uint16_t x, uint16_t y, uint32_t now) {
   if (down && !touching_) {
     touching_ = true;
     pointerDown(x, y, now);
+  } else if (down && touching_) {
+    pressMotion_.update(x, y);
   } else if (!down && touching_) {
     touching_ = false;
+    // The controller has no valid coordinates on release; use the last down sample.
     pointerUp(now);
   }
 }
@@ -665,14 +722,19 @@ void Renderer::pointerDown(uint16_t x, uint16_t y, uint32_t now) {
   pressActive_ = true;
   pressX_ = x;
   pressY_ = y;
+  pressMotion_.begin(x, y);
   pressAtMs_ = now;
+  pressToken_ = overlayToken_;
+  pressOverlay_ = overlay_;
 }
 
-void Renderer::pointerUp(uint32_t now) {
+void Renderer::pointerUp(uint32_t now, int x, int y) {
   if (!pressActive_) return;
+  if (x >= 0 && y >= 0) pressMotion_.update(x, y);
   pressActive_ = false;
   forceRender_ = true;
-  if (now - pressAtMs_ < 800) tap(pressX_, pressY_, now);
+  if (!pressMotion_.cancelled && now - pressAtMs_ < 800 && pressOverlay_ == overlay_ && pressToken_ == overlayToken_)
+    tap(pressX_, pressY_, now);
 }
 
 void Renderer::drawOverlay(uint16_t *buffer, uint32_t now) {
@@ -689,7 +751,8 @@ void Renderer::drawOverlay(uint16_t *buffer, uint32_t now) {
   const int index = sessionIndex(overlaySource_, overlaySession_);
   const bool stale = index < 0 || state_.mona || state_.mood == Mood::Disconnected ||
     (overlay_ == OverlayMode::Approval &&
-     (state_.sessions[index].state != Mood::NeedsInput || !state_.sessions[index].attention.active));
+     (state_.sessions[index].state != Mood::NeedsInput || !state_.sessions[index].attention.active ||
+      strcmp(state_.sessions[index].attention.id, overlayAttentionId_)));
   if (stale) {
     overlay_ = OverlayMode::None;
     pressActive_ = false;
@@ -780,6 +843,22 @@ void Renderer::drawApprovalCard(uint16_t *buffer, const OrbState::SessionInfo &i
   drawCard(buffer, Box{kApprovalX, kApprovalY, kApprovalW, kApprovalH}, kAmber);
   drawCentered(buffer, kApprovalY + 22, attentionHeading(attention.kind), color565(kAmber), 2, 312);
   drawCentered(buffer, kApprovalY + 48, info.name, muted, 2, 312);
+  if (overlayToken_ && attention.actionable && !displayOnlyAttention(attention.kind)) {
+    const auto page = PermissionReview::page(review_.command ? review_.commandText() : attention.reason, 0);
+    for (size_t row = 0; row < PermissionReview::kRows; row++)
+      drawText(buffer, 84, 158 + row * 22, page.lines[row], foreground, 2);
+    drawCentered(buffer, 283, page.count > 1 ? "Command continues..." : "\\\\ and \\xHH are escaped", muted, 1, 312);
+    auto button = [&](int x, int y, int width, const char *label, bool enabled) {
+      fillRoundRect(buffer, x, y, width, 38, 8, color565(enabled ? 0x30363d : 0x161b22));
+      drawText(buffer, x + (width - static_cast<int>(strlen(label)) * 12) / 2, y + 12, label,
+        enabled ? foreground : muted, 2);
+    };
+    const bool pending = decisionPending_ || attention.decisionPending;
+    button(90, 340, 140, pending ? "Pending" : "Deny", !pending);
+    button(250, 340, 140, "Approve", PermissionReview::canApprove(attention.actionable,
+      displayOnlyAttention(attention.kind), pending));
+    return;
+  }
   if (attention.reason[0]) drawWrapped(buffer, kApprovalY + 80, attention.reason, foreground, 2, 312, 2);
   if (attention.preview[0]) {
     fillRoundRect(buffer, 76, kApprovalY + 128, 328, 56, 10, color565(0x161b22));

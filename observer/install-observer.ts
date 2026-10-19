@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
-import { join, resolve } from "node:path"
+import { join, relative, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import { loadOrbEndpoints, orbConfigPath } from "./config-store.js"
+import { hostCopilotPath, loadOrbEndpoints, orbConfigPath } from "./config-store.js"
 
 export async function installObserver(configPath = orbConfigPath(), project = false): Promise<string> {
   await loadOrbEndpoints(configPath)
@@ -30,10 +30,14 @@ try {
 } catch (error) {
   if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
 }
-const runtime = pathToFileURL(fileURLToPath(new URL("./observer.js", import.meta.url))).href
+// Docker runs this installer against a container checkout; ORB_HOST_CHECKOUT maps it to the host path the Copilot host loads.
+const appRoot = resolve(fileURLToPath(new URL("../../", import.meta.url)))
+const observerFile = fileURLToPath(new URL("./observer.js", import.meta.url))
+const hostCheckout = process.env.ORB_HOST_CHECKOUT ? resolve(process.env.ORB_HOST_CHECKOUT) : appRoot
+const runtime = pathToFileURL(join(hostCheckout, relative(appRoot, observerFile))).href
 const entry = `import { joinSession } from '@github/copilot-sdk/extension';
 import { observeSession } from ${JSON.stringify(runtime)};
-process.env.ORB_CONFIG ??= ${JSON.stringify(resolve(configPath))};
+process.env.ORB_CONFIG ??= ${JSON.stringify(hostCopilotPath(resolve(configPath)))};
 await observeSession(await joinSession());
 `
 await mkdir(directory, { recursive: true })

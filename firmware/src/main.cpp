@@ -119,6 +119,11 @@ void loop() {
     uint16_t x = 0, y = 0;
     const bool down = Board::touchPoint(x, y);
     renderer.touch(down, x, y, now);
+    OrbState::PermissionIntent intent;
+    if (renderer.takePermissionDecision(intent)) {
+      server.queuePermissionDecision(intent);
+      if (server.takeState(state)) renderer.setState(state);
+    }
     char alertId[48];
     if (renderer.takeAlertAcknowledgement(alertId, sizeof(alertId)) && server.acknowledgeAlert(alertId) &&
         server.takeState(state)) renderer.setState(state);

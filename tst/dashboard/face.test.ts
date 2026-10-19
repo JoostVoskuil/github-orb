@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
-  Face, arcSlot, compactCount, duration, sessionStatus
+  Face, APPROVE_BUTTON, DENY_BUTTON, arcSlot, compactCount, duration, sessionStatus
 } from '../../dashboard/face.js';
 
 const emotions = JSON.parse(await readFile(new URL('../../../protocol/emotions.json', import.meta.url), 'utf8'));
@@ -109,8 +109,6 @@ test('dots select the animation, a second tap opens information, centre opens se
   assert.equal(f.overlay, null);
   f.tap(4, 440, 360);
   assert.equal(f.mood, 'needsInput');
-  assert.equal(f.overlay, null);
-  f.tap(5, 240, 240);
   assert.deepEqual([f.overlay?.mode, f.overlay?.key], ['approval', 'cli:b']);
   f.tap(6, 240, 120);
   assert.equal(f.overlay?.key, 'cli:c');
@@ -158,8 +156,10 @@ test('ring selects every session directly while a details or approval card is op
     f.pointerDown(10, x, y);
     f.pointerUp(20);
     assert.equal(f.selectedKey, key);
-    assert.equal(f.overlay, null);
-    f.tap(21, x, y);
+    if (mode !== 'approval') {
+      assert.equal(f.overlay, null);
+      f.tap(21, x, y);
+    }
     assert.deepEqual([f.overlay?.key, f.overlay?.mode], [key, mode]);
   }
 });
@@ -325,4 +325,88 @@ test('status and value formatting stay short for the round display', () => {
   assert.equal(compactCount(1_234), '1.2k');
   assert.equal(compactCount(2_000_000), '2M');
   assert.equal(duration(75), '1m 15s');
+});
+
+function actionableFace() {
+  const f = new Face(emotions);
+  const session = { ...sessions[1], observerInstanceId: 'owner-1', observerStartedAt: 1000,
+    attention: { ...attention, actionable: true, command: 'npm test\nprintf done' } };
+  f.setState({ mood: 'needsInput', sessions: [session] }, 0);
+  f.tap(1);
+  return { f, session };
+}
+
+test('permission buttons win over overlapping ring geometry and deny is one-shot', () => {
+  const { f } = actionableFace();
+  assert.ok(arcSlot(DENY_BUTTON.x + DENY_BUTTON.w - 1, DENY_BUTTON.y + 39, 3) >= 0);
+  f.pointerDown(10, DENY_BUTTON.x + 155, DENY_BUTTON.y + 39);
+  const action = f.pointerUp(20);
+  assert.equal(typeof action, 'object');
+  assert.equal(action && typeof action === 'object' && action.action, 'deny');
+  assert.equal(f.overlay?.key, 'cli:b');
+  assert.equal(f.pendingDecisions.size, 1);
+  assert.equal(f.tap(30, DENY_BUTTON.x + 20, DENY_BUTTON.y + 20), undefined);
+});
+
+test('approve queues directly; holds and drags never decide', () => {
+  const { f } = actionableFace();
+  const [x, y] = [APPROVE_BUTTON.x + 30, APPROVE_BUTTON.y + 20];
+  f.pointerDown(10, x, y);
+  assert.equal(f.pointerUp(810), null);
+  f.pointerDown(900, x, y);
+  assert.equal(f.pointerUp(910, x + 50, y), undefined);
+  f.pointerDown(920, x, y);
+  const action = f.pointerUp(930, x, y);
+  assert.equal(action && typeof action === 'object' && action.action, 'approve');
+  assert.equal(f.pendingDecisions.size, 1);
+  const texts: string[] = [];
+  const ctx = new Proxy({ fillText(text: string) { texts.push(text); }, measureText: () => ({ width: 100 }) },
+    { get: (obj, key) => obj[key] ?? (() => {}) });
+  f.drawApprovalCard(ctx, f.primarySession());
+  assert.ok(texts.includes('Approve'));
+  assert.ok(texts.includes('Deny'));
+  assert.ok(texts.includes('Decision queued; waiting for observer'));
+});
+
+test('changed nonce, command, owner or closed session cancels in-flight presses and resets pending', () => {
+  for (const change of [
+    { observerInstanceId: 'owner-2' }, { observerStartedAt: 2000 }, { closed: true },
+    { attention: { ...attention, actionable: true, command: 'different' } },
+    { attention: { ...attention, actionable: true, command: 'npm test', id: 'fedcba9876543210' } }
+  ]) {
+    const { f, session } = actionableFace();
+    f.tap(2, DENY_BUTTON.x + 20, DENY_BUTTON.y + 20);
+    f.pointerDown(10, APPROVE_BUTTON.x + 20, APPROVE_BUTTON.y + 20);
+    f.setState({ mood: 'needsInput', sessions: [{ ...session, ...change }] }, 11);
+    assert.equal(f.overlay, null);
+    assert.equal(f.pointerUp(20), undefined);
+    assert.equal(f.pendingDecisions.size, 0);
+  }
+});
+
+test('actionable preview-only requests approve directly; read-only and display-only cards never decide', () => {
+  const previewOnly = new Face(emotions);
+  previewOnly.setState({ mood: 'needsInput', sessions: [{ ...sessions[1], attention: {
+    ...attention, actionable: true, command: undefined
+  } }] }, 0);
+  previewOnly.tap(1);
+  const approved = previewOnly.tap(2, APPROVE_BUTTON.x + 20, APPROVE_BUTTON.y + 20);
+  assert.equal(approved && typeof approved === 'object' && approved.action, 'approve');
+  assert.equal(previewOnly.pendingDecisions.size, 1);
+
+  for (const a of [{ ...attention }, { id: attention.id, kind: 'question', pending: 1, actionable: true }]) {
+    const f = new Face(emotions);
+    f.setState({ mood: 'needsInput', sessions: [{ ...sessions[1], attention: a }] }, 0);
+    f.tap(1);
+    assert.equal(f.tap(2, APPROVE_BUTTON.x + 20, APPROVE_BUTTON.y + 20), undefined);
+    assert.equal(f.pendingDecisions.size, 0);
+  }
+});
+
+test('preview and physical Orb display modes disable permission actions', () => {
+  const { f } = actionableFace();
+  f.permissionsEnabled = false;
+  assert.equal(f.tap(2, APPROVE_BUTTON.x + 20, APPROVE_BUTTON.y + 20), undefined);
+  assert.equal(f.tap(3, DENY_BUTTON.x + 20, DENY_BUTTON.y + 20), undefined);
+  assert.equal(f.pendingDecisions.size, 0);
 });

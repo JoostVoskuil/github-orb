@@ -2,6 +2,7 @@ import {
   validObserverMessage, type CopilotActivity, type ObserverAttention,
   type ObserverMessage
 } from '../observer/observer-protocol.js';
+import { actionableAttention, attentionSignature, type PermissionDecision } from './permission.js';
 
 export type OrbMood = 'idle' | 'thinking' | 'tool' | 'needsInput' | 'done' | 'error' | 'scared' | 'disconnected' |
   'prAssigned' | 'reviewRequested' | 'workflowFailure' | 'securityAlert';
@@ -72,6 +73,8 @@ export const SESSION_NAME_MAX = 40;
 export const DISPLAY_SLOTS = 3;
 export const ENDED_RETENTION_MS = 2 * 60_000;
 const DONE_DISPLAY_MS = 10_000;
+// Actionable permissions heartbeat every second; other observer states need not heartbeat.
+const PERMISSION_FRESHNESS_MS = 10_000;
 const BUSY = new Set<OrbMood>(['thinking', 'tool', 'needsInput']);
 
 // Moods are changed only through here so busy/ended bookkeeping stays consistent.
@@ -173,11 +176,15 @@ export class OrbEngine {
   private copilotDoneAt: number | null = null;
   private presentationId = 0;
   private previousPresentation = '';
+  // At most one decision for each of the 16 bounded sessions. Never extend TTL on retries.
+  private decisions = new Map<string, { session: Session; instanceId: string; startedAt: number;
+    attention: string; value: PermissionDecision; expiresAt: number }>();
 
   constructor(private readonly catalog: any) {}
 
   reset(): void {
     this.sessions.clear();
+    this.decisions.clear();
     this.slots = [];
     this.settings = structuredClone(DEFAULT_SETTINGS);
     this.latestAlert = null;
@@ -274,6 +281,7 @@ export class OrbEngine {
       session.lastSeen = now;
       close(session, now);
       this.assignSlots(now);
+      this.pruneDecisions(now);
       return null;
     }
     session.lastSeen = now;
@@ -321,7 +329,43 @@ export class OrbEngine {
       session.stateSince = now;
     }
     this.assignSlots(now);
+    this.pruneDecisions(now);
     return null;
+  }
+
+  queuePermissionDecision(sessionId: string, attentionId: string, decision: 'approve' | 'deny', now = Date.now()): boolean {
+    this.tick(now);
+    const session = this.sessions.get(`cli:${sessionId}`);
+    const owner = session?.observer;
+    if (!session || session.closed || owner?.ended || owner?.state !== 'needsInput' ||
+      now - session.lastSeen > PERMISSION_FRESHNESS_MS ||
+        !actionableAttention(owner.attention) || owner.attention?.id !== attentionId ||
+        (decision !== 'approve' && decision !== 'deny')) return false;
+    const queued = this.decisions.get(sessionId);
+    if (queued) return queued.value.decision === decision;
+    this.decisions.set(sessionId, { session, instanceId: owner.instanceId, startedAt: owner.startedAt,
+      attention: attentionSignature(owner.attention), value: { attentionId, decision }, expiresAt: now + 30_000 });
+    return true;
+  }
+
+  pendingPermissionDecision(payload: unknown, now = Date.now()): PermissionDecision | undefined {
+    this.tick(now);
+    if (!validObserverMessage(payload) || payload.event !== 'observerState') return;
+    const queued = this.decisions.get(payload.sessionId);
+    if (!queued || payload.instanceId !== queued.instanceId || payload.startedAt !== queued.startedAt ||
+        payload.sequence !== queued.session.observer?.sequence) return;
+    return { ...queued.value };
+  }
+
+  private pruneDecisions(now: number): void {
+    for (const [id, queued] of this.decisions) {
+      const session = this.sessions.get(`cli:${id}`), owner = session?.observer;
+      if (now >= queued.expiresAt || session !== queued.session || session.closed || !owner || owner.ended ||
+          now - session.lastSeen > PERMISSION_FRESHNESS_MS ||
+          owner.instanceId !== queued.instanceId || owner.startedAt !== queued.startedAt ||
+          owner.state !== 'needsInput' || !actionableAttention(owner.attention) ||
+          attentionSignature(owner.attention) !== queued.attention) this.decisions.delete(id);
+    }
   }
 
   tick(now = Date.now()): void {
@@ -350,6 +394,7 @@ export class OrbEngine {
       }
     }
     this.assignSlots(now);
+    this.pruneDecisions(now);
   }
 
   private visible(session: Session, now: number): boolean {
@@ -475,6 +520,7 @@ export class OrbEngine {
       ended: session.endedAt !== null, closed: session.closed, finished: session.finished,
       ...(session.endedAt !== null ? { endedAgoSec: Math.max(0, Math.floor((now - session.endedAt) / 1000)) } : {}),
       ...(observer?.agent ? { agent: observer.agent } : {}),
+      ...(observer ? { observerInstanceId: observer.instanceId, observerStartedAt: observer.startedAt } : {}),
       ...(observer?.subagent && !session.closed ? { subagent: observer.subagent } : {}),
       ...(observer?.model ? { model: observer.model } : {}),
       ...(observer?.inputTokens !== undefined && observer.outputTokens !== undefined
@@ -482,7 +528,9 @@ export class OrbEngine {
       ...(observer?.contextPercent !== undefined ? { contextPercent: observer.contextPercent } : {}),
       ...(observer?.busySince !== undefined && session.endedAt === null
         ? { busySec: Math.max(0, Math.floor((now - observer.busySince) / 1000)) } : {}),
-      ...(attention ? { attention: { ...attention } } : {})
+      ...(attention ? { attention: { ...attention,
+        ...(attention.actionable === true && now - session.lastSeen > PERMISSION_FRESHNESS_MS
+          ? { actionable: false } : {}) } } : {})
     };
   }
 }

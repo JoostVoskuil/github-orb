@@ -34,7 +34,15 @@ class OrbEngine {
     const char *reason = nullptr;
     const char *preview = nullptr;
     uint32_t pending = 0;
+    bool actionable = false;
+    const char *command = nullptr;
   };
+
+  struct PermissionDecision {
+    char attentionId[17] = "";
+    char decision[8] = "";
+  };
+  static constexpr uint32_t kPermissionTtlMs = 30000;
 
   struct SessionEntry {
     // Live session: counts toward sessionCount and mood selection.
@@ -58,6 +66,10 @@ class OrbEngine {
     bool hasBusy = false;
     uint32_t busySinceMs = 0;
     OrbState::Attention attention;
+    OrbState::PermissionReviewDetails review;
+    PermissionDecision permissionDecision;
+    uint32_t decisionAtMs = 0;
+    bool decisionQueued = false;
     // Set when the session stops working (idle/done/error) or closes; drives the display retention.
     bool hasEnded = false;
     uint32_t endedAtMs = 0;
@@ -88,6 +100,12 @@ class OrbEngine {
                    const char *chat = nullptr);
   bool handleGitHubAlert(const OrbState::Alert &alert, uint32_t nowMs);
   bool acknowledgeAlert(const char *id);
+  bool queuePermissionDecision(const char *sessionId, const char *attentionId, const char *decision,
+                               uint32_t nowMs, uint32_t displayedToken = 0);
+  bool permissionDecision(const char *sessionId, const char *instanceId, uint64_t startedAt,
+                          uint32_t nowMs, PermissionDecision &out) const;
+  bool permissionReview(const char *sessionId, const char *attentionId, uint32_t nowMs,
+                        OrbState::PermissionReviewDetails &out) const;
   bool tick(uint32_t nowMs);
   void setOnline(bool online);
   void setSettings(const OrbSettings &settings);
@@ -124,6 +142,7 @@ class OrbEngine {
   uint8_t slotCount_ = 0;
   uint8_t hidden_ = 0;
   uint32_t nextUid_ = 1;
+  uint32_t nextAttentionToken_ = 1;
   TimingConfig timing_;
   OrbSettings settings_;
   bool mona_ = false;

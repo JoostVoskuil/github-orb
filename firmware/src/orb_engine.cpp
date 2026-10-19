@@ -1,4 +1,5 @@
 #include "orb_engine.h"
+#include "permission_review.h"
 
 namespace {
 bool equalsIgnoreCase(const char *a, const char *b) {
@@ -175,6 +176,10 @@ void OrbEngine::setMood(SessionEntry &entry, Mood mood, uint32_t nowMs) {
 void OrbEngine::closeEntry(SessionEntry &entry, uint32_t nowMs) {
   entry.active = false;
   entry.closed = true;
+  entry.attention = OrbState::Attention{};
+  entry.review = OrbState::PermissionReviewDetails{};
+  entry.permissionDecision = PermissionDecision{};
+  entry.decisionQueued = false;
   if (!entry.hasEnded) {
     entry.hasEnded = true;
     entry.endedAtMs = nowMs;
@@ -423,14 +428,17 @@ const char *OrbEngine::handleObserver(const char *sessionId, const char *event, 
     (x.contextPercent < 0 || (update && x.contextPercent <= 100)) &&
     (!x.hasBusy || update);
   AttentionKind kind = AttentionKind::Other;
+  const bool validCommand = !x.command || PermissionReview::validCommand(x.command);
   const bool validAttention = !x.hasAttention ||
     (update && mood == Mood::NeedsInput && attentionId(x.attentionId) && parseAttentionKind(x.attentionKind, kind) &&
      label(x.reason, 80) && label(x.preview, 60) && x.pending >= 1 && x.pending <= 255 &&
-     (!displayOnlyAttention(kind) || (!x.reason && !x.preview)));
+     validCommand && (!displayOnlyAttention(kind) || (!x.reason && !x.preview && !x.actionable && !x.command)) &&
+    (!x.actionable || x.command));
   if (!identifier(sessionId, 95, false) || !identifier(instanceId, 36, true) ||
       !startedAt || startedAt > 9007199254740991ULL || !sequence ||
       (!update && !end) || (update && (mood > Mood::Error || !state)) ||
       !validActivity || !validSessionName || !validMetadata || !validAttention ||
+      (!x.hasAttention && (x.actionable || x.command)) ||
       !label(tool, 63) || !label(project, 40)) return "invalid_observer_event";
   tick(nowMs);
 
@@ -516,6 +524,7 @@ const char *OrbEngine::handleObserver(const char *sessionId, const char *event, 
   if (x.hasBusy) target->busySinceMs = nowMs - x.busyForMs;
 
   OrbState::Attention attention;
+  OrbState::PermissionReviewDetails review;
   if (x.hasAttention) {
     attention.active = true;
     strlcpy(attention.id, x.attentionId, sizeof(attention.id));
@@ -523,12 +532,25 @@ const char *OrbEngine::handleObserver(const char *sessionId, const char *event, 
     strlcpy(attention.reason, x.reason ? x.reason : "", sizeof(attention.reason));
     strlcpy(attention.preview, x.preview ? x.preview : "", sizeof(attention.preview));
     attention.pending = static_cast<uint8_t>(x.pending);
+    attention.actionable = x.actionable;
+    if (x.command && x.command[0]) {
+      review.command = !strcmp(x.command, target->review.commandText()) ? target->review.command :
+        std::make_shared<const OrbState::PermissionReviewDetails::Command>(x.command);
+    }
   }
-  if (attention.active != target->attention.active || strcmp(attention.id, target->attention.id) ||
+  if (ownerChanged || attention.active != target->attention.active || strcmp(attention.id, target->attention.id) ||
       attention.kind != target->attention.kind || strcmp(attention.reason, target->attention.reason) ||
       strcmp(attention.preview, target->attention.preview) ||
+      attention.actionable != target->attention.actionable || strcmp(review.commandText(), target->review.commandText()) ||
       attention.pending != target->attention.pending) {
+    if (attention.active) {
+      review.token = nextAttentionToken_++;
+      if (!nextAttentionToken_) nextAttentionToken_ = 1;
+    }
     target->attention = attention;
+    target->review = review;
+    target->permissionDecision = PermissionDecision{};
+    target->decisionQueued = false;
     metadataChanged = true;
   }
 
@@ -570,6 +592,61 @@ const char *OrbEngine::handleObserver(const char *sessionId, const char *event, 
     dirty_ = true;
   }
   return nullptr;
+}
+
+bool OrbEngine::queuePermissionDecision(const char *sessionId, const char *attentionId, const char *decision,
+                                        uint32_t nowMs, uint32_t displayedToken) {
+  if (!sessionId || !attentionId || !decision || (strcmp(decision, "approve") && strcmp(decision, "deny"))) return false;
+  tick(nowMs);
+  for (SessionEntry &entry : sessions_) {
+    if (!entry.observer || !entry.active || entry.closed || strcmp(entry.sessionId, sessionId) ||
+        entry.state != Mood::NeedsInput || !entry.attention.active || !entry.attention.actionable ||
+        displayOnlyAttention(entry.attention.kind) || strcmp(entry.attention.id, attentionId) ||
+        (displayedToken && entry.review.token != displayedToken) || entry.attention.decisionPending ||
+        nowMs - entry.lastSeenMs >= kPermissionTtlMs) continue;
+    strlcpy(entry.permissionDecision.attentionId, attentionId, sizeof(entry.permissionDecision.attentionId));
+    strlcpy(entry.permissionDecision.decision, decision, sizeof(entry.permissionDecision.decision));
+    entry.decisionAtMs = nowMs;
+    entry.decisionQueued = true;
+    entry.attention.decisionPending = true;
+    revision_++;
+    dirty_ = true;
+    return true;
+  }
+  return false;
+}
+
+bool OrbEngine::permissionReview(const char *sessionId, const char *attentionId, uint32_t nowMs,
+                                 OrbState::PermissionReviewDetails &out) const {
+  out = OrbState::PermissionReviewDetails{};
+  if (!sessionId || !attentionId) return false;
+  for (const SessionEntry &entry : sessions_) {
+    if (entry.active && entry.observer && !entry.closed && entry.state == Mood::NeedsInput &&
+        entry.attention.active && !strcmp(entry.sessionId, sessionId) && !strcmp(entry.attention.id, attentionId) &&
+        nowMs - entry.lastSeenMs < kPermissionTtlMs) {
+      out = entry.review;
+      return true;
+    }
+  }
+  return false;
+}
+
+bool OrbEngine::permissionDecision(const char *sessionId, const char *instanceId, uint64_t startedAt,
+                                   uint32_t nowMs, PermissionDecision &out) const {
+  out = PermissionDecision{};
+  if (!sessionId || !instanceId) return false;
+  for (const SessionEntry &entry : sessions_) {
+    if (entry.observer && entry.active && !entry.closed && entry.state == Mood::NeedsInput &&
+        entry.attention.active && entry.attention.actionable && !displayOnlyAttention(entry.attention.kind) &&
+        entry.decisionQueued && nowMs - entry.decisionAtMs < kPermissionTtlMs &&
+        nowMs - entry.lastSeenMs < kPermissionTtlMs && !strcmp(entry.sessionId, sessionId) &&
+        !strcmp(entry.instanceId, instanceId) && entry.startedAt == startedAt &&
+        !strcmp(entry.attention.id, entry.permissionDecision.attentionId)) {
+      out = entry.permissionDecision;
+      return true;
+    }
+  }
+  return false;
 }
 
 bool OrbEngine::handleGitHubAlert(const OrbState::Alert &alert, uint32_t nowMs) {
@@ -614,6 +691,11 @@ bool OrbEngine::tick(uint32_t nowMs) {
   }
   for (SessionEntry &entry : sessions_) {
     if (!entry.active && !entry.observer && !entry.closed) continue;
+    if (entry.decisionQueued && nowMs - entry.decisionAtMs >= kPermissionTtlMs) {
+      entry.decisionQueued = false;
+      entry.permissionDecision = PermissionDecision{};
+      changed = true;
+    }
     if (entry.active && !entry.observer && nowMs - entry.lastSeenMs > timing_.sessionTimeoutMs) {
       closeEntry(entry, entry.lastSeenMs);
       changed = true;

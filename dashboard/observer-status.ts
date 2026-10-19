@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { copilotOrbConfigPath, loadSavedOrbEndpoints } from '../observer/config-store.js';
+import { copilotOrbConfigPath, hostCopilotPath, loadSavedOrbEndpoints } from '../observer/config-store.js';
 
 export interface ObserverDestination {
   id?: string;
@@ -18,12 +18,15 @@ export interface ObserverConfiguration {
   error: 'config_not_found' | 'invalid_orb_config' | 'observer_config_unavailable' | null;
 }
 
-export async function observerConfiguration(configPath = copilotOrbConfigPath()): Promise<ObserverConfiguration> {
+export async function observerConfiguration(
+  configPath = copilotOrbConfigPath(),
+  options: { dashboardPort?: number } = {}
+): Promise<ObserverConfiguration> {
   const extensionPath = join(dirname(dirname(configPath)), 'extensions/github-orb/extension.mjs');
   let installed = false;
   try {
     const entry = await readFile(extensionPath, 'utf8');
-    installed = entry.includes('observeSession') && entry.includes(JSON.stringify(configPath));
+    installed = entry.includes('observeSession') && entry.includes(JSON.stringify(hostCopilotPath(configPath)));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
@@ -37,8 +40,11 @@ export async function observerConfiguration(configPath = copilotOrbConfigPath())
         kind: endpoint.id === 'orb' || endpoint.id === 'dashboard' ? endpoint.id : 'other',
         host: endpoint.host, port: endpoint.port, status: 'unreachable', activeSessions: null
       };
+      // In Docker the saved dashboard port is the published host port, which is not open inside the container.
+      const probe = endpoint.id === 'dashboard' && options.dashboardPort !== undefined
+        ? { host: '127.0.0.1', port: options.dashboardPort } : endpoint;
       try {
-        const response = await fetch(`http://${endpoint.host}:${endpoint.port}/state`, {
+        const response = await fetch(`http://${probe.host}:${probe.port}/state`, {
           headers: { Authorization: ['Bearer', endpoint.token].join(' ') },
           redirect: 'error', signal: AbortSignal.timeout(1500)
         });

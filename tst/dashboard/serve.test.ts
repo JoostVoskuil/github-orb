@@ -10,6 +10,46 @@ import { GitHubPoller } from '../../dashboard/github-poller.js';
 import type { OrbConnectionConfig } from '../../observer/config-store.js';
 import type { UsbAssetName, UsbAssetUploadProgress, UsbProvisionRequest, UsbSetupService } from '../../dashboard/usb-setup.js';
 
+test('permission endpoint enforces auth, bounded bodies, conflicts and exact-owner event replay', async () => {
+  await withServer(async base => {
+    const attention = { id: '0123456789abcdef', kind: 'shell', pending: 1, actionable: true,
+      command: 'npm test\nprintf "done"' };
+    const owner = { source: 'cli', event: 'observerState', observerVersion: 1, sessionId: 'permissions',
+      instanceId: '11111111-1111-1111-1111-111111111111', startedAt: 1000,
+      sequence: 1, state: 'needsInput', attention };
+    const post = (path: string, body: unknown) => api(base, path, { method: 'POST', body: JSON.stringify(body) });
+    const decision = { sessionId: owner.sessionId, attentionId: attention.id, decision: 'approve' };
+    assert.equal((await fetch(`${base}/permission-decision`, { method: 'POST', body: JSON.stringify(decision) })).status, 401);
+    assert.equal((await fetch(`${base}/permission-decision`, { method: 'POST', headers: {
+      Authorization: 'Bearer test-token', Origin: 'https://evil.example', 'Content-Type': 'application/json'
+    }, body: JSON.stringify(decision) })).status, 403);
+    assert.equal((await post('/permission-decision', { ...decision, decision: 'execute' })).response.status, 400);
+    assert.equal((await post('/permission-decision', { ...decision, extra: 'x'.repeat(600) })).response.status, 413);
+    assert.equal((await post('/permission-decision', decision)).response.status, 409);
+    assert.equal((await post('/event', owner)).response.status, 202);
+    const queued = await fetch(`${base}/permission-decision`, { method: 'POST', headers: {
+      Origin: base, 'Sec-Fetch-Site': 'same-origin', 'Content-Type': 'application/json'
+    }, body: JSON.stringify(decision) });
+    assert.equal(queued.status, 202);
+    assert.equal((await post('/permission-decision', { ...decision, decision: 'deny' })).response.status, 409);
+    for (const sequence of [2, 3]) {
+      const replay = await post('/event', { ...owner, sequence });
+      assert.equal(replay.response.status, 202);
+      assert.deepEqual(replay.body.permissionDecision, { attentionId: attention.id, decision: 'approve' });
+    }
+    const stale = await post('/event', { ...owner, sequence: 2 });
+    assert.equal(stale.response.status, 409);
+    assert.equal(stale.body.permissionDecision, undefined);
+    const wrong = await post('/event', { ...owner, sessionId: 'other-session' });
+    assert.equal(wrong.body.permissionDecision, undefined);
+    const changed = await post('/event', { ...owner, sequence: 4, attention: { ...attention, actionable: false } });
+    assert.equal(changed.body.permissionDecision, undefined);
+    assert.equal((await post('/permission-decision', decision)).response.status, 409);
+    const messages = await api(base, '/messages');
+    assert.equal(JSON.stringify(messages.body).includes('npm test'), false);
+  });
+});
+
 async function withServer(
   run: (base: string) => Promise<void>,
   usbSetup: UsbSetupService | false = false,
@@ -237,6 +277,63 @@ test('same-origin browser requests can use the UI without exposing the API token
     assert.equal((await response.json()).mood, 'idle');
     assert.equal(url.hostname, '127.0.0.1');
   });
+});
+
+test('dashboard install generates a private observer token once and keeps it across restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'orb-dashboard-observer-'));
+  const oldEnv = { copilotHome: process.env.COPILOT_HOME, publishedPort: process.env.ORB_DASHBOARD_PUBLISHED_PORT };
+  process.env.COPILOT_HOME = join(directory, 'copilot');
+  process.env.ORB_DASHBOARD_PUBLISHED_PORT = '17422';
+  const dataDir = join(directory, 'data');
+  const tokenPath = join(dataDir, 'observer-token.json');
+  const listen = async (server: ReturnType<typeof createDashboardServer>) => {
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Server did not bind');
+    return `http://127.0.0.1:${address.port}`;
+  };
+  const close = (server: ReturnType<typeof createDashboardServer>) =>
+    new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+
+  const server = createDashboardServer({ dataDir, githubPoller: false, usbSetup: false });
+  let restarted: ReturnType<typeof createDashboardServer> | undefined;
+  try {
+    const base = await listen(server);
+    const headers = { Origin: base, 'Sec-Fetch-Site': 'same-origin', 'Content-Type': 'application/json' };
+    const install = await fetch(`${base}/setup/install-dashboard-observer`, { method: 'POST', headers, body: '{}' });
+    const installBody = await install.json();
+    assert.equal(install.status, 200);
+    assert.equal(installBody.port, 17422);
+    assert.equal(installBody.configPath, copilotOrbConfigPath());
+
+    const saved = JSON.parse(await readFile(tokenPath, 'utf8')).token as string;
+    assert.match(saved, /^[A-Za-z0-9_-]{43}$/);
+    assert.equal((await stat(tokenPath)).mode & 0o777, 0o600);
+    assert.equal(JSON.stringify(installBody).includes(saved), false);
+    const orbConfig = JSON.parse(await readFile(copilotOrbConfigPath(), 'utf8'));
+    assert.deepEqual(orbConfig.endpoints.find((endpoint: { id: string }) => endpoint.id === 'dashboard'),
+      { id: 'dashboard', host: '127.0.0.1', port: 17422, token: saved });
+
+    const reinstall = await fetch(`${base}/setup/install-dashboard-observer`, { method: 'POST', headers, body: '{}' });
+    assert.equal(reinstall.status, 200);
+    assert.equal(JSON.parse(await readFile(tokenPath, 'utf8')).token, saved);
+
+    await close(server);
+    restarted = createDashboardServer({ dataDir, githubPoller: false, usbSetup: false });
+    const restartedBase = await listen(restarted);
+    const authorized = await fetch(`${restartedBase}/state`, { headers: { Authorization: `Bearer ${saved}` } });
+    assert.equal(authorized.status, 200);
+    const unauthorized = await fetch(`${restartedBase}/state`);
+    assert.equal(unauthorized.status, 401);
+  } finally {
+    if (restarted) await close(restarted);
+    else await close(server).catch(() => {});
+    await rm(directory, { recursive: true, force: true });
+    if (oldEnv.copilotHome === undefined) delete process.env.COPILOT_HOME;
+    else process.env.COPILOT_HOME = oldEnv.copilotHome;
+    if (oldEnv.publishedPort === undefined) delete process.env.ORB_DASHBOARD_PUBLISHED_PORT;
+    else process.env.ORB_DASHBOARD_PUBLISHED_PORT = oldEnv.publishedPort;
+  }
 });
 
 test('dashboard UI can save a private GitHub token and switch the observer to the local dashboard', async () => {

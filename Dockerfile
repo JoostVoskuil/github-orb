@@ -13,7 +13,8 @@ ENV NODE_ENV=production \
     ORB_DASHBOARD_HOST=0.0.0.0 \
     ORB_DASHBOARD_PORT=7420 \
     ORB_USB_SETUP=off \
-    ORB_DATA_DIR=/data
+    ORB_DATA_DIR=/data \
+    COPILOT_HOME=/copilot-home
 
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -24,7 +25,7 @@ COPY --from=build --chown=node:node /app/dashboard ./dashboard
 COPY --from=build --chown=node:node /app/media/animations ./media/animations
 COPY --from=build --chown=node:node /app/media/images ./media/images
 COPY --from=build --chown=node:node /app/protocol ./protocol
-RUN mkdir -p /data && chown node:node /data
+RUN mkdir -p /data /copilot-home/orb /copilot-home/extensions && chown -R node:node /data /copilot-home
 
 USER node
 EXPOSE 7420

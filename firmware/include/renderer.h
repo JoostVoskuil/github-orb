@@ -4,6 +4,7 @@
 
 #include "animation_pack.h"
 #include "orb_state.h"
+#include "permission_review.h"
 #include "session_carousel.h"
 
 class Renderer {
@@ -14,6 +15,9 @@ class Renderer {
   // Polled touch state; derives taps.
   void touch(bool down, uint16_t x, uint16_t y, uint32_t now);
   bool takeAlertAcknowledgement(char *id, size_t size);
+  bool takePermissionDecision(OrbState::PermissionIntent &intent);
+  using ReviewProvider = bool (*)(const char *, const char *, OrbState::PermissionReviewDetails &, void *);
+  void setReviewProvider(ReviewProvider provider, void *context) { reviewProvider_ = provider; reviewContext_ = context; }
   bool assetsReady() const { return assetsReady_; }
   const char *testSound();
 
@@ -65,7 +69,7 @@ class Renderer {
   void tap(uint16_t x, uint16_t y, uint32_t now);
   void open(uint8_t index, uint32_t now);
   void pointerDown(uint16_t x, uint16_t y, uint32_t now);
-  void pointerUp(uint32_t now);
+  void pointerUp(uint32_t now, int x = -1, int y = -1);
   void sessionStatus(const OrbState::SessionInfo &info, uint32_t now, char *out, size_t size) const;
   uint32_t sessionColor(const OrbState::SessionInfo &info) const;
   void triggerSound(Mood mood);
@@ -110,9 +114,20 @@ class Renderer {
   char overlayAlertId_[48] = "";
   char pendingAlertId_[48] = "";
   uint32_t overlayUntilMs_ = 0;
+  uint32_t overlayToken_ = 0;
+  char overlayAttentionId_[17] = "";
+  OrbState::PermissionReviewDetails review_;
+  ReviewProvider reviewProvider_ = nullptr;
+  void *reviewContext_ = nullptr;
+  bool decisionPending_ = false;
+  bool hasPermissionIntent_ = false;
+  OrbState::PermissionIntent permissionIntent_;
 
   bool touching_ = false;
   bool pressActive_ = false;
   uint16_t pressX_ = 0, pressY_ = 0;
+  PermissionReview::TapMotion pressMotion_;
   uint32_t pressAtMs_ = 0;
+  uint32_t pressToken_ = 0;
+  OverlayMode pressOverlay_ = OverlayMode::None;
 };

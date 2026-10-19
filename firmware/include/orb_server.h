@@ -18,6 +18,8 @@ class OrbServer {
   void loop();
   bool takeState(OrbState &state);
   bool acknowledgeAlert(const char *id);
+  bool queuePermissionDecision(const OrbState::PermissionIntent &intent);
+  bool permissionReview(const char *sessionId, const char *attentionId, OrbState::PermissionReviewDetails &out);
 
  private:
   bool authorized();
@@ -25,6 +27,7 @@ class OrbServer {
   void sendJson(int code, const JsonDocument &doc);
   void handleHealth();
   void handleEvent();
+  void handlePermissionDecision();
   void handleGetState();
   void handleGetSettings();
   void handlePutSettings();

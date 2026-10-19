@@ -5,6 +5,41 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { createDashboardServer } from '../../dashboard/serve.js';
+import { observerConfiguration } from '../../dashboard/observer-status.js';
+
+test('observer configuration checks the dashboard through its local port when the saved port is published', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'orb-observer-local-'));
+  const configPath = join(directory, 'config.json');
+  const dashboard = http.createServer((req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    if (req.headers.authorization !== 'Bearer dashboard-secret') {
+      res.writeHead(401);
+      res.end('{}');
+    } else {
+      res.end('{"type":"state","sessions":[],"sessionCount":0}');
+    }
+  });
+  await new Promise<void>(resolve => dashboard.listen(0, '127.0.0.1', resolve));
+  const localPort = (dashboard.address() as import('node:net').AddressInfo).port;
+  const closed = http.createServer();
+  await new Promise<void>(resolve => closed.listen(0, '127.0.0.1', resolve));
+  const publishedPort = (closed.address() as import('node:net').AddressInfo).port;
+  await new Promise<void>(resolve => closed.close(() => resolve()));
+  try {
+    await writeFile(configPath, JSON.stringify({ endpoints: [
+      { id: 'dashboard', host: '127.0.0.1', port: publishedPort, token: 'dashboard-secret' }
+    ] }));
+    const local = await observerConfiguration(configPath, { dashboardPort: localPort });
+    assert.deepEqual(local.destinations, [
+      { id: 'dashboard', kind: 'dashboard', host: '127.0.0.1', port: publishedPort, status: 'reachable', activeSessions: 0 }
+    ]);
+    const published = await observerConfiguration(configPath);
+    assert.equal(published.destinations[0]?.status, 'unreachable');
+  } finally {
+    await new Promise<void>(resolve => dashboard.close(() => resolve()));
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test('observer configuration shows saved destinations, reachability and installation without exposing secrets', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'orb-observer-status-'));

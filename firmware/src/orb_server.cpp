@@ -6,6 +6,7 @@
 #include <WiFi.h>
 #include <math.h>
 #include "device_update.h"
+#include "permission_review.h"
 #include "renderer.h"
 
 namespace {
@@ -55,6 +56,10 @@ void OrbServer::begin(DeviceConfigStore &configStore, OrbEngine &engine, GitHubP
   configStore_ = &configStore;
   engine_ = &engine;
   githubPoller_ = &githubPoller;
+  renderer.setReviewProvider([](const char *sessionId, const char *attentionId,
+      OrbState::PermissionReviewDetails &out, void *context) {
+    return static_cast<OrbServer *>(context)->permissionReview(sessionId, attentionId, out);
+  }, this);
 
   const DeviceConfig &cfg = configStore.get();
   xSemaphoreTake(engineMutex_, portMAX_DELAY);
@@ -75,6 +80,8 @@ void OrbServer::begin(DeviceConfigStore &configStore, OrbEngine &engine, GitHubP
   server_.on("/health", HTTP_GET, [this]() { handleHealth(); });
   server_.on("/event", HTTP_OPTIONS, [this]() { addCorsHeaders(); server_.send(204); });
   server_.on("/event", HTTP_POST, [this]() { handleEvent(); });
+  server_.on("/permission-decision", HTTP_OPTIONS, [this]() { addCorsHeaders(); server_.send(204); });
+  server_.on("/permission-decision", HTTP_POST, [this]() { handlePermissionDecision(); });
   server_.on("/state", HTTP_OPTIONS, [this]() { addCorsHeaders(); server_.send(204); });
   server_.on("/state", HTTP_GET, [this]() { handleGetState(); });
   server_.on("/settings", HTTP_OPTIONS, [this]() { addCorsHeaders(); server_.send(204); });
@@ -271,10 +278,61 @@ void OrbServer::handleHealth() {
   sendJson(200, doc);
 }
 
+bool OrbServer::permissionReview(const char *sessionId, const char *attentionId, OrbState::PermissionReviewDetails &out) {
+  if (!engine_) return false;
+  xSemaphoreTake(engineMutex_, portMAX_DELAY);
+  const bool found = engine_->permissionReview(sessionId, attentionId, millis(), out);
+  xSemaphoreGive(engineMutex_);
+  return found;
+}
+
+bool OrbServer::queuePermissionDecision(const OrbState::PermissionIntent &intent) {
+  if (!engine_ || !intent.token) return false;
+  xSemaphoreTake(engineMutex_, portMAX_DELAY);
+  const bool queued = engine_->queuePermissionDecision(intent.sessionId, intent.attentionId,
+    intent.approve ? "approve" : "deny", millis(), intent.token);
+  xSemaphoreGive(engineMutex_);
+  return queued;
+}
+
+void OrbServer::handlePermissionDecision() {
+  if (!authorized()) return;
+  JsonDocument doc;
+  const String body = server_.arg("plain");
+  if (body.length() > 512) {
+    doc["error"] = "payload_too_large";
+    sendJson(413, doc);
+    return;
+  }
+  const bool parsed = !deserializeJson(doc, body);
+  auto text = [](JsonVariantConst value) {
+    return value.is<const char *>() && value.as<JsonString>().size() == strlen(value.as<const char *>());
+  };
+  bool valid = parsed && doc.is<JsonObject>() && doc.size() == 3 && text(doc["sessionId"]) &&
+    text(doc["attentionId"]) && text(doc["decision"]);
+  if (valid) valid = strlen(doc["sessionId"].as<const char *>()) >= 1 &&
+    strlen(doc["sessionId"].as<const char *>()) <= 95 && strlen(doc["attentionId"].as<const char *>()) == 16 &&
+    (!strcmp(doc["decision"], "approve") || !strcmp(doc["decision"], "deny"));
+  if (!valid) {
+    doc.clear();
+    doc["error"] = "invalid_permission_decision";
+    sendJson(400, doc);
+    return;
+  }
+  xSemaphoreTake(engineMutex_, portMAX_DELAY);
+  const bool queued = engine_->queuePermissionDecision(doc["sessionId"], doc["attentionId"], doc["decision"], millis());
+  xSemaphoreGive(engineMutex_);
+  doc.clear();
+  if (queued) doc["accepted"] = true;
+  else doc["error"] = "attention_changed";
+  sendJson(queued ? 202 : 409, doc);
+}
+
 void OrbServer::handleEvent() {
   if (!authorized()) return;
   const String body = server_.arg("plain");
-  if (body.length() > 4096) {
+  // 1024 command bytes may each occupy six bytes when JSON-escaped.
+  if (body.length() > 12288) {
     JsonDocument err;
     err["error"] = "payload_too_large";
     sendJson(413, err);
@@ -330,13 +388,15 @@ void OrbServer::handleEvent() {
       JsonObjectConst object = attention.as<JsonObjectConst>();
       validAttention = object["id"].is<const char *>() && object["kind"].is<const char *>() &&
         optionalString(object["reason"]) && optionalString(object["preview"]) &&
+        optionalString(object["command"]) && (object["actionable"].isUnbound() || object["actionable"].is<bool>()) &&
         integer(object["pending"], 255) &&
         intactString(object["id"]) && intactString(object["kind"]) &&
-        intactString(object["reason"]) && intactString(object["preview"]);
+        intactString(object["reason"]) && intactString(object["preview"]) && intactString(object["command"]) &&
+        (object["command"].isUnbound() || PermissionReview::validCommand(object["command"].as<const char *>()));
       for (JsonPairConst pair : object) {
         const char *key = pair.key().c_str();
         if (strcmp(key, "id") && strcmp(key, "kind") && strcmp(key, "reason") && strcmp(key, "preview") &&
-            strcmp(key, "pending")) validAttention = false;
+            strcmp(key, "pending") && strcmp(key, "actionable") && strcmp(key, "command")) validAttention = false;
       }
       if (validAttention) {
         extras.hasAttention = true;
@@ -345,6 +405,8 @@ void OrbServer::handleEvent() {
         extras.reason = object["reason"].as<const char *>();
         extras.preview = object["preview"].as<const char *>();
         extras.pending = object["pending"].as<uint32_t>();
+        extras.actionable = object["actionable"] | false;
+        extras.command = object["command"].as<const char *>();
       }
     }
     extras.subagent = doc["subagent"].as<const char *>();
@@ -382,12 +444,20 @@ void OrbServer::handleEvent() {
       state, tool, activity, project, sessionName, now, agent, model,
       hasTokens ? doc["inputTokens"].as<uint32_t>() : 0,
       hasTokens ? doc["outputTokens"].as<uint32_t>() : 0, hasTokens, &extras) : "invalid_observer_event";
+    OrbEngine::PermissionDecision decision;
+    const bool hasDecision = !error && engine_->permissionDecision(sessionId, doc["instanceId"],
+      static_cast<uint64_t>(doc["startedAt"].as<double>()), now, decision);
     xSemaphoreGive(engineMutex_);
     JsonDocument response;
     if (error) {
       response["error"] = error;
     } else {
       response["accepted"] = true;
+      if (hasDecision) {
+        JsonObject permission = response["permissionDecision"].to<JsonObject>();
+        permission["attentionId"] = decision.attentionId;
+        permission["decision"] = decision.decision;
+      }
     }
     sendJson(error ? !strcmp(error, "invalid_observer_event") ? 400 : 409 : 202, response);
     return;
@@ -498,6 +568,10 @@ void OrbServer::handleGetState() {
       if (info.attention.reason[0]) attention["reason"] = info.attention.reason;
       if (info.attention.preview[0]) attention["preview"] = info.attention.preview;
       attention["pending"] = info.attention.pending;
+      attention["actionable"] = info.attention.actionable;
+      OrbState::PermissionReviewDetails review;
+      if (permissionReview(info.sessionId, info.attention.id, review) && review.command) attention["command"] = review.commandText();
+      attention["decisionPending"] = info.attention.decisionPending;
     }
   }
   doc["primary"] = state.primarySession;

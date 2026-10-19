@@ -2,6 +2,7 @@ import { basename } from "node:path"
 import { loadOrbEndpoints } from "./config-store.js"
 import { ObserverReducer, metadataLabel, type LifecycleEvent } from "./observer-reducer.js"
 import { ObserverSender, httpFanoutDelivery } from "./observer-sender.js"
+import type { PermissionDecision } from "./observer-protocol.js"
 
 const PERMISSION_POLL_MS = 1_000
 
@@ -19,6 +20,10 @@ export interface ObserverSession {
     }
     permissions?: {
       pendingRequests?: () => Promise<{ items?: unknown }>
+      handlePendingPermissionRequest?: (params: {
+        requestId: string
+        result: { kind: "approve-once" | "reject" }
+      }) => Promise<{ success: boolean }>
     }
   }
 }
@@ -31,7 +36,10 @@ function pendingItems(value: { items?: unknown } | undefined): Array<{ requestId
 }
 
 export async function observeSession(session: ObserverSession): Promise<() => Promise<void>> {
-  const reducer = new ObserverReducer()
+  const permissions = session.rpc?.permissions
+  const canDecide = typeof permissions?.pendingRequests === "function" &&
+    typeof permissions?.handlePendingPermissionRequest === "function"
+  const reducer = new ObserverReducer({ permissionDecisions: canDecide })
   let sender: ObserverSender | undefined
   let sessionName = ""
   const unsubscribe = session.on((event) => {
@@ -69,7 +77,6 @@ export async function observeSession(session: ObserverSession): Promise<() => Pr
   try {
     const endpoints = await loadOrbEndpoints()
     if (!/^[A-Za-z0-9_-]{1,95}$/.test(session.sessionId)) throw new Error("unsupported_session_id")
-    const permissions = session.rpc?.permissions
     let project = ""
     try {
       const metadata = await session.rpc?.metadata?.snapshot?.()
@@ -86,6 +93,7 @@ export async function observeSession(session: ObserverSession): Promise<() => Pr
     // Some hosts do not deliver permission events to extensions, and prompts raised before this
     // extension subscribed are otherwise invisible; the host's pending list is authoritative.
     let polling = false
+    let deciding = false
     let pollingAvailable = typeof permissions?.pendingRequests === "function"
     const pollPermissions = async () => {
       if (!pollingAvailable || polling) return
@@ -100,14 +108,40 @@ export async function observeSession(session: ObserverSession): Promise<() => Pr
         polling = false
       }
     }
+    const decide = async (decision: PermissionDecision) => {
+      if (!canDecide || deciding || stopping || reducer.ended) return
+      const requestId = reducer.permissionRequestId(decision.attentionId)
+      if (!requestId) return
+      deciding = true
+      try {
+        const items = pendingItems(await permissions!.pendingRequests!())
+        const pending = items.find(item => item.requestId === requestId)
+        if (stopping || reducer.ended || !pending || !reducer.matchesPermission(decision.attentionId, pending.request)) return
+        const result = await permissions!.handlePendingPermissionRequest!({
+          requestId, result: { kind: decision.decision === "approve" ? "approve-once" : "reject" },
+        })
+        if (result.success) {
+          const state = reducer.accept({ type: "permission.completed", data: { requestId } })
+          if (state) sender?.update(state)
+        } else {
+          // Already resolved in the host; remove stale controls without claiming approval.
+          const state = reducer.syncPermissions(pendingItems(await permissions!.pendingRequests!()))
+          if (state) sender?.update(state)
+        }
+      } catch {
+        warn("Orb permission decision could not be confirmed; check the pending request on the computer.")
+      } finally {
+        deciding = false
+      }
+    }
     await pollPermissions()
-    sender = new ObserverSender(session.sessionId, project, httpFanoutDelivery(endpoints), warn)
+    sender = new ObserverSender(session.sessionId, project, httpFanoutDelivery(endpoints, decide), warn)
     sender.setSessionName(sessionName)
     if (!reducer.ended) {
       const state = reducer.current()
       if (state) sender.update(state)
       timer = setInterval(() => {
-        if (reducer.wantsPermissionPoll()) void pollPermissions()
+        if (reducer.wantsPermissionPoll()) void pollPermissions().then(() => sender?.heartbeat())
       }, PERMISSION_POLL_MS)
       process.on("SIGTERM", onSignal)
       process.on("SIGINT", onSignal)

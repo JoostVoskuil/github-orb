@@ -16,13 +16,17 @@ services:
       ORB_DASHBOARD_HOST: 0.0.0.0
       ORB_DASHBOARD_PORT: 7420
       ORB_DASHBOARD_PUBLISHED_PORT: ${ORB_DASHBOARD_PUBLISHED_PORT:-7421}
-      ORB_TOKEN: ${ORB_TOKEN:?Set ORB_TOKEN in .env}
       ORB_GITHUB_PAT: ${ORB_GITHUB_PAT:-}
       ORB_GITHUB_POLL_SEC: ${ORB_GITHUB_POLL_SEC:-60}
       ORB_DATA_DIR: /data
+      # Live Dashboard install writes the host's Copilot observer entry through these mounts.
+      ORB_HOST_COPILOT_HOME: ${ORB_HOST_COPILOT_HOME:-${HOME}/.copilot}
+      ORB_HOST_CHECKOUT: ${ORB_HOST_CHECKOUT:-${PWD}}
     volumes:
       - dashboard-data:/data
       - ./dist/firmware:/app/dist/firmware:ro
+      - ${ORB_HOST_COPILOT_HOME:-${HOME}/.copilot}/orb:/copilot-home/orb
+      - ${ORB_HOST_COPILOT_HOME:-${HOME}/.copilot}/extensions:/copilot-home/extensions
     healthcheck:
       test:
         - CMD

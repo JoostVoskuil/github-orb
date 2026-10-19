@@ -113,6 +113,21 @@ let acknowledgingAlert = false;
 let physicalSettingsLoaded = false;
 let settingsDirty = false;
 let settingsBusy = false;
+async function submitPermissionDecision(target: string, decision: 'approve' | 'deny', alreadyPending = false) {
+    // Never route a preview/demo click to a real observer.
+    const session = mode === 'dashboard' && connected() && face.currentPermission(target);
+    if (!session || (!alreadyPending && !face.markDecisionPending(target))) return;
+    try {
+        await settingsResponse('/permission-decision', 'POST', {
+            sessionId: session.sessionId, attentionId: session.attention.id, decision
+        });
+    } catch (error) {
+        const message = `Permission decision not confirmed: ${error instanceof Error ? error.message : 'unknown error'}. Check the computer before retrying.`;
+        face.decisionStatus = { target, message: 'Decision failed — check activity log' };
+        log(message);
+        // Keep one-shot controls disabled: a lost response may still have queued the decision.
+    }
+}
 async function loadEmotions() {
     const res = await fetch('/protocol/emotions.json', { cache: 'no-store' });
     return res.json();
@@ -969,6 +984,7 @@ let fpsAt = 0;
 function frame(now) {
     requestAnimationFrame(frame);
     const state = effectiveState();
+    face.permissionsEnabled = mode === 'dashboard' && connected();
     face.setState(state, now);
     maybePlaySound(state, now);
     face.draw(ctx, now, settings.brightness);
@@ -1140,6 +1156,8 @@ function setupUi(emotions) {
         if (mode === next)
             return;
         clearPreviewTimers();
+        face.overlay = null;
+        face.press = null;
         mode = next;
         previewOffline = false;
         if (mode === 'animations') {
@@ -1190,10 +1208,13 @@ function setupUi(emotions) {
         const [x, y] = point(event);
         face.pointerDown(performance.now(), x, y);
     };
-    canvas.onpointerup = () => {
-        const id = face.pointerUp(performance.now());
-        if (id)
-            void acknowledgeAlert(id);
+    canvas.onpointerup = (event) => {
+        const [x, y] = point(event);
+        const action = face.pointerUp(performance.now(), x, y);
+        if (typeof action === 'string') void acknowledgeAlert(action);
+        else if (action && mode === 'dashboard' && connected()) {
+            void submitPermissionDecision(action.target, action.action, true);
+        }
     };
     canvas.onpointercancel = () => { face.press = null; };
     $('scenario-buttons').onclick = (event) => {

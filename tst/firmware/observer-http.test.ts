@@ -17,6 +17,9 @@ test('firmware HTTP handler parses observer lifecycle and optional labels with A
     assert.ok(start >= 0 && end > start);
     // Exercise the production handler without the ESP32 network/OTA dependencies.
     writeFileSync(join(directory, 'event-handler.inc'), source.slice(start, end));
+    const permissionStart = source.indexOf('void OrbServer::handlePermissionDecision() {');
+    assert.ok(permissionStart >= 0 && permissionStart < start);
+    writeFileSync(join(directory, 'permission-handler.inc'), source.slice(permissionStart, start));
     const binary = join(directory, 'observer-http');
     const build = spawnSync(process.env.CXX || 'c++', [
       '-std=c++17', '-g', '-fsanitize=address', '-fno-omit-frame-pointer',

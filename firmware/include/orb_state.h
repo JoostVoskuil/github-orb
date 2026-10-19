@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <memory>
 
 enum class Mood : uint8_t {
   Idle,
@@ -61,12 +62,33 @@ struct OrbState {
   // Live (not closed) sessions, including any hidden beyond the display slots.
   uint8_t sessionCount = 0;
   struct Attention {
-    bool active = false;
+    bool active : 1;
+    bool actionable : 1;
+    bool decisionPending : 1;
+    Attention() : active(false), actionable(false), decisionPending(false) {}
     char id[17] = "";
     AttentionKind kind = AttentionKind::Other;
     char reason[81] = "";
     char preview[61] = "";
     uint8_t pending = 0;
+  };
+  struct PermissionReviewDetails {
+    struct Command {
+      char text[1025];
+      explicit Command(const char *value) { strlcpy(text, value, sizeof(text)); }
+    };
+    // Immutable shared storage keeps snapshots compact and review text alive
+    // across concurrent observer updates without retaining pointers into JSON.
+    std::shared_ptr<const Command> command;
+    const char *commandText() const { return command ? command->text : ""; }
+    // Device-local identity, never an SDK request ID or an observer instance ID.
+    uint32_t token = 0;
+  };
+  struct PermissionIntent {
+    char sessionId[96] = "";
+    char attentionId[17] = "";
+    uint32_t token = 0;
+    bool approve = false;
   };
   // Up to three displayed sessions in sticky slot order; timestamps use the device millis() clock.
   static constexpr size_t kMaxSessionInfos = 3;

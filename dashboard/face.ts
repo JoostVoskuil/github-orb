@@ -1,5 +1,6 @@
 import { presentation, presentationChanged, alertLabel } from './presentation.js';
 import { SessionCarousel, sessionKey, sessionMood, workingSessionState } from './session-carousel.js';
+import { actionableAttention, permissionTarget } from './permission.js';
 
 const SIZE = 480;
 const C = SIZE / 2;
@@ -9,6 +10,8 @@ const CONFETTI = ['#a371f7', '#2dd4bf', '#3fb950', '#f0a020', '#2f81f7', '#fffff
 // Shared with the firmware renderer: geometry for the split ring, cards.
 export const ARC_HIT_RADIUS = 175;
 export const APPROVAL_CARD = { x: 56, y: 76, w: 368, h: 328 };
+export const APPROVE_BUTTON = { x: 76, y: 344, w: 156, h: 40 };
+export const DENY_BUTTON = { x: 248, y: 344, w: 156, h: 40 };
 export const SESSION_CARD = { x: 56, y: 86, w: 368, h: 308 };
 const ENDED_COLOR = '#484f58';
 const RING_TRACK = '#30363d';
@@ -76,8 +79,11 @@ export class Face {
   p: any;
   particles: any[];
   lastFrame: number;
-  overlay: { mode: 'session' | 'approval' | 'notification'; key: string; until: number } | null;
-  press: { x: number; y: number; at: number } | null;
+  overlay: { mode: 'session' | 'approval' | 'notification'; key: string; until: number; target?: string } | null;
+  press: { x: number; y: number; at: number; target?: string } | null;
+  pendingDecisions = new Set<string>();
+  permissionsEnabled = true;
+  decisionStatus: { target: string; message: string } | null = null;
   carousel = new SessionCarousel();
   avatarClocks = new Map<string, { mood: string; at: number }>();
   incoming: any;
@@ -110,6 +116,13 @@ export class Face {
 
   setState(state, now) {
     state = workingSessionState(state);
+    const targets = new Set(state.sessions.map(permissionTarget));
+    for (const target of this.pendingDecisions) if (!targets.has(target)) this.pendingDecisions.delete(target);
+    if (this.decisionStatus && !targets.has(this.decisionStatus.target)) this.decisionStatus = null;
+    if (this.overlay?.mode === 'approval' && !targets.has(this.overlay.target)) {
+      this.overlay = null;
+      this.press = null;
+    }
     const membershipChanged = state.mascot !== 'mona' &&
       this.state.sessions.map(sessionKey).join('\0') !== state.sessions.map(sessionKey).join('\0');
     this.incoming = state;
@@ -380,7 +393,21 @@ export class Face {
 
   open(sess, now) {
     const approval = sess.state === 'needsInput' && !!sess.attention;
-    this.overlay = { mode: approval ? 'approval' : 'session', key: sessionKey(sess), until: now + (approval ? 30_000 : 10_000) };
+    this.overlay = { mode: approval ? 'approval' : 'session', key: sessionKey(sess), until: now + (approval ? 30_000 : 10_000),
+      ...(approval ? { target: permissionTarget(sess) } : {}) };
+  }
+
+  currentPermission(target: string) {
+    if (!this.permissionsEnabled) return;
+    return this.state.sessions.find(sess => permissionTarget(sess) === target && sess.source === 'cli' &&
+      !sess.closed && sess.state === 'needsInput' && actionableAttention(sess.attention));
+  }
+
+  markDecisionPending(target: string): boolean {
+    if (!this.currentPermission(target) || this.pendingDecisions.has(target)) return false;
+    this.pendingDecisions.add(target);
+    this.decisionStatus = { target, message: 'Decision queued; waiting for observer' };
+    return true;
   }
 
   tap(now, x = C, y = C) {
@@ -396,6 +423,16 @@ export class Face {
     }
     const list = this.state.sessions;
     if (this.state.mascot === 'mona' || this.state.copilotNotification || !list.length || this.mood === 'disconnected') return;
+    // Cards overlap the inner edge of the ring: permission buttons always win.
+    if (this.overlay?.mode === 'approval' && now < this.overlay.until &&
+        (inside(APPROVE_BUTTON, x, y) || inside(DENY_BUTTON, x, y))) {
+      const target = this.overlay.target!;
+      const sess = this.currentPermission(target);
+      if (!sess || this.pendingDecisions.has(target)) return;
+      const approve = inside(APPROVE_BUTTON, x, y);
+      if (!this.markDecisionPending(target)) return;
+      return { action: approve ? 'approve' as const : 'deny' as const, target };
+    }
     const arc = arcSlot(x, y, list.length);
     const slot = arc;
     if (slot >= 0) {
@@ -405,6 +442,7 @@ export class Face {
         this.carousel.select(key, now, true);
         this.overlay = null;
         this.setState(this.incoming, now);
+        if (list[slot].state === 'needsInput') this.open(list[slot], now);
       }
       return;
     }
@@ -422,13 +460,15 @@ export class Face {
   }
 
   pointerDown(now, x, y) {
-    this.press = { x, y, at: now };
+    this.press = { x, y, at: now, target: this.overlay?.target };
   }
 
-  pointerUp(now) {
+  pointerUp(now, x?: number, y?: number) {
     const press = this.press;
     this.press = null;
     if (!press) return;
+    if (press.target !== this.overlay?.target ||
+      (x !== undefined && y !== undefined && Math.hypot(x - press.x, y - press.y) > 12)) return;
     if (now - press.at < 800) return this.tap(now, press.x, press.y);
     return null;
   }
@@ -576,13 +616,13 @@ export class Face {
       ctx.fillStyle = '#f0f6fc';
       this.wrap(ctx, attention.reason, C, box.y + 98, 310, 24, 2, '500 18px system-ui, sans-serif');
     }
-    if (attention.preview) {
+    if (attention.command || attention.preview) {
       ctx.fillStyle = '#161b22';
       ctx.beginPath();
       ctx.roundRect(76, box.y + 146, 328, 56, 10);
       ctx.fill();
       ctx.fillStyle = '#c9d1d9';
-      this.wrap(ctx, attention.preview, C, box.y + 164, 300, 20, 2, '500 15px ui-monospace, monospace');
+      this.wrap(ctx, attention.command || attention.preview, C, box.y + 164, 300, 20, 2, '500 15px ui-monospace, monospace');
     }
     if (attention.pending > 1) {
       ctx.fillStyle = '#8b949e';
@@ -591,7 +631,23 @@ export class Face {
     }
     ctx.fillStyle = '#8b949e';
     ctx.font = '600 17px system-ui, sans-serif';
-    ctx.fillText('Answer on computer', C, box.y + 252);
+    if (actionableAttention(attention) && sess.source === 'cli' && !sess.closed) {
+      const target = permissionTarget(sess);
+      const pending = this.pendingDecisions.has(target);
+      ctx.font = '500 12px system-ui, sans-serif';
+      ctx.fillText(!this.permissionsEnabled ? 'Decisions available in Live Dashboard only' : this.decisionStatus?.target === target ? this.decisionStatus.message :
+        'Tap Approve or Deny to send the decision', C, 322);
+      for (const [label, button, enabled] of [
+        ['Approve', APPROVE_BUTTON, this.permissionsEnabled && !pending],
+        ['Deny', DENY_BUTTON, this.permissionsEnabled && !pending]
+      ] as const) {
+        ctx.fillStyle = enabled ? '#30363d' : '#161b22';
+        ctx.fillRect(button.x, button.y, button.w, button.h);
+        ctx.fillStyle = enabled ? '#f0f6fc' : '#6e7681';
+        ctx.font = '600 17px system-ui, sans-serif';
+        ctx.fillText(label, button.x + button.w / 2, button.y + button.h / 2);
+      }
+    } else ctx.fillText('Answer on computer', C, box.y + 252);
   }
 
   wrap(ctx, text, x, y, maxWidth, lineHeight, maxLines, font) {

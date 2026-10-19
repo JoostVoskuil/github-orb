@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto"
 import type { OrbConnectionConfig } from "./config-store.js"
-import type { ObserverMessage } from "./observer-protocol.js"
+import { validPermissionDecision, type ObserverMessage, type PermissionDecision } from "./observer-protocol.js"
 import type { ObserverState } from "./observer-reducer.js"
 
 export type DeliveryError = "observer_missing" | "observer_conflict"
 export interface DeliveryResult {
   error?: DeliveryError
   failures?: number
+  decisionConflict?: boolean
 }
 // Legacy test doubles may still resolve to a bare error string or null.
 type Delivery = (message: ObserverMessage) => Promise<DeliveryResult | DeliveryError | string | null>
@@ -34,9 +35,12 @@ export function httpDelivery(config: OrbConnectionConfig): Delivery {
 
 const REQUEST_TIMEOUT_MS = 350
 
-export function httpFanoutDelivery(configs: readonly OrbConnectionConfig[]): Delivery {
+export function httpFanoutDelivery(configs: readonly OrbConnectionConfig[], decide?: (decision: PermissionDecision) => Promise<void>): Delivery {
   if (!configs.length) throw new Error("invalid_orb_config")
+  // Keep a conflicted request computer-only even if one destination's choice expires first.
+  let conflictedAttention: string | undefined
   return async (message) => {
+    const decisions: PermissionDecision[] = []
     const results = await Promise.allSettled(configs.map(async (config): Promise<DeliveryResult> => {
       const response = await fetch(`http://${config.host}:${config.port}/event`, {
         method: "POST",
@@ -47,6 +51,9 @@ export function httpFanoutDelivery(configs: readonly OrbConnectionConfig[]): Del
       })
       const body: unknown = await response.json()
       if (response.status === 202 && body && typeof body === "object" && "accepted" in body && body.accepted === true) {
+        if (message.event === "observerState" && message.attention?.actionable &&
+          "permissionDecision" in body && validPermissionDecision(body.permissionDecision) &&
+          body.permissionDecision.attentionId === message.attention.id) decisions.push(body.permissionDecision)
         return {}
       }
       if (response.status === 409 && body && typeof body === "object" && "error" in body) {
@@ -57,7 +64,11 @@ export function httpFanoutDelivery(configs: readonly OrbConnectionConfig[]): Del
     const failures = results.filter((result) =>
       result.status === "rejected" || (result.status === "fulfilled" && result.value.error !== undefined)
     ).length
-    return failures ? { failures } : {}
+    if (message.attention?.id !== conflictedAttention) conflictedAttention = undefined
+    if (new Set(decisions.map(item => item.decision)).size > 1) conflictedAttention = message.attention?.id
+    const decisionConflict = conflictedAttention !== undefined
+    if (!decisionConflict && decisions[0]) await decide?.(decisions[0])
+    return { ...(failures ? { failures } : {}), ...(decisionConflict ? { decisionConflict: true } : {}) }
   }
 }
 
@@ -123,6 +134,11 @@ export class ObserverSender {
     while (this.draining) await this.draining
   }
 
+  /** Poll the reverse channel without accumulating a backlog or changing ownership. */
+  heartbeat(): void {
+    if (!this.stopped && !this.closing && this.desired?.attention?.actionable && !this.draining) this.queueState()
+  }
+
   private start(): void {
     if (this.draining || this.stopped) return
     // Serialize delivery so sequence numbers remain ordered; changes during a send replace pending state.
@@ -160,7 +176,7 @@ export class ObserverSender {
         ...(event === "observerState" && state ? this.stateFields(state) : {}),
       }
       try {
-        const { error, failures: endpointFailures = 0 } = normalize(await this.deliver(message))
+        const { error, failures: endpointFailures = 0, decisionConflict } = normalize(await this.deliver(message))
         if (error === "observer_conflict") {
           this.report("Orb observer replaced by another instance; reload this extension to take ownership.")
           this.stopped = true
@@ -168,6 +184,10 @@ export class ObserverSender {
           if (event === "observerState") throw new Error("invalid_observer_response")
         } else {
           failures = 0
+          if (decisionConflict && Date.now() - this.lastWarning >= 30_000) {
+            this.lastWarning = Date.now()
+            this.report("Orb permission decisions conflict between destinations; resolve the request on the computer.")
+          }
           if (endpointFailures && Date.now() - this.lastWarning >= 30_000) {
             this.lastWarning = Date.now()
             this.report(`Orb observer delivery failed for ${endpointFailures} destination(s); check network reachability.`)

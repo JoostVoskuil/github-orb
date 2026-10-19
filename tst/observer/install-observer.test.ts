@@ -31,6 +31,36 @@ test('dashboard installer uses the private Copilot home config and installs the 
   }
 });
 
+test('observer installation names host paths when running from a container mount', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'orb-install-host-'));
+  try {
+    const containerHome = join(directory, 'copilot-home');
+    const configPath = join(containerHome, 'orb', 'config.json');
+    await mkdir(join(containerHome, 'orb'), { recursive: true });
+    await writeFile(configPath, JSON.stringify({ host: '127.0.0.1', port: 7421, token: 'mapped-test-token' }), { mode: 0o600 });
+    const hostHome = '/Users/example/.copilot';
+    const hostCheckout = '/Users/example/checkout';
+    const env = {
+      ...process.env,
+      COPILOT_HOME: containerHome,
+      ORB_HOST_COPILOT_HOME: hostHome,
+      ORB_HOST_CHECKOUT: hostCheckout,
+      ORB_CONFIG: configPath
+    };
+    const result = spawnSync(process.execPath,
+      [fileURLToPath(new URL('../../observer/install-observer.js', import.meta.url))], { env, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.includes('mapped-test-token'), false);
+    const content = await readFile(join(containerHome, 'extensions', 'github-orb', 'extension.mjs'), 'utf8');
+    assert.ok(content.includes(join(hostHome, 'orb', 'config.json')));
+    assert.equal(content.includes(configPath), false);
+    assert.ok(content.includes(join(hostCheckout, 'dist', 'observer', 'observer.js')));
+    assert.equal(content.includes('mapped-test-token'), false);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('observer installation remains private and idempotent without modifying unrelated configuration', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'orb-install-'));
   try {
